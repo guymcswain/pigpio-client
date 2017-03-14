@@ -230,7 +230,7 @@ commandSocket.once('connect', ()=> {
 								nob.func(level, tick);
 					}
 					if (remainder) {
-						console.log('getting fractional chunks');
+						//console.log('getting fractional chunks');
 						//save the chunk remainder
 						chunk = chunk.slice(remainder-chunk.length);
 						
