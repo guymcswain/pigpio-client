@@ -1,0 +1,17 @@
+{
+  "name": "pigpio-client",
+  "version": "1.0.0",
+  "description": "A nodejs socket interface to pigpio daemon.",
+  "main": "pigpio-client.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "pigpiod"
+  ],
+  "author": "Guy McSwain",
+  "license": "ISC"
+}

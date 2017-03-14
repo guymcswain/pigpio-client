@@ -213,11 +213,14 @@ commandSocket.once('connect', ()=> {
 				handle = res[3];
 				console.log('opened notification socket with handle= '+handle);
 				// connect listener that processes notification chunks
-				notificationSocket.on('data', function (chunk) {
+				var chunk = new Buffer.allocUnsafe(0);
+				notificationSocket.on('data', function (chunklet) {
 					// monitors all gpio bits and issues callback for all registered notifiers.
 					//console.log('got chunk'+JSON.stringify(chunk));
-					if (chunk.length%12) console.log('getting fractional chunks');
-					for (let i=0; i<chunk.length; i+=12) {
+					chunk = Buffer.concat([chunk,chunklet]);
+					let remainder = chunk.length%12;
+					
+					for (let i=0; i<chunk.length-remainder; i+=12) {
 						let seqno = chunk.readUInt16LE(i+0),
 							flags = chunk.readUInt16LE(i+2),
 							tick = chunk.readUInt32LE(i+4),
@@ -225,6 +228,12 @@ commandSocket.once('connect', ()=> {
 						if (flags === 0)
 							for (let nob of notifiers.keys())
 								nob.func(level, tick);
+					}
+					if (remainder) {
+						console.log('getting fractional chunks');
+						//save the chunk remainder
+						chunk = chunk.slice(remainder-chunk.length);
+						
 					}
 				});
 			});
