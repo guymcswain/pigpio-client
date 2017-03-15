@@ -232,7 +232,7 @@ commandSocket.once('connect', ()=> {
 					if (remainder) {
 						//console.log('getting fractional chunks');
 						//save the chunk remainder
-						chunk = chunk.slice(remainder-chunk.length);
+						chunk = chunk.slice(chunk.length-remainder);
 						
 					}
 				});
