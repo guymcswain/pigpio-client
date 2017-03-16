@@ -4,63 +4,71 @@ Raspberry Pi to control its GPIO pins.  For the underlying detail of the pigpio
 socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 
 ###Usage
-	const PigpioClient = require('./pigpio-client');
-	const pigpio = new PigpioClient.Pigpio();  // rpi @ localhost, port 8888 (defaults)
-	pigpio.modeSet(25, 'input'); // GPIO25 input pins
-	var level = pigpio.read(25);
-	// get notifications on gpio25
-	const notifier = PigpioClient.Notifier(); // also localhost, port 8888
-	notifier.start(1<<25);
-	notifier.on('data', (buf)=> {
-		//buf contains 16 bit sequence, 16 bit flags, 32 bit tick, 32 bit level
+	const PigpioClient = require('pigpio-client');
+	const myPi = new PigpioClient.pigpio({host:'localhost', port:8888});  
+	const myPin = myPi.gpio(25);
+	myPin.modeset('input'); // GPIO25 is input
+	var myPinLevel;
+	myPin.read((err,val)=>{
+		if (!err) myPinLevel = val;
+	});
+	// get notifications on GPIO25
+	myPin.notify((buf)=> {
+		//buf is Buffer object containing 16-bit sequence, 16-bit flags, 32-bit tick, 32-bit level
 	});
 
 Callback arguments are optional.  Network request and responses are serialized 
 by default.  To enablepipeling of requests, set the pipelining configuration option to true.  Leave 
-pipelining disabled as it appears pigpio doesn't work.
+pipelining disabled as it is experimental.
 
 
 API - Update 12-2-15:  Callback arguments returned are now: (err, res, ...ext).
 
 ###Constructor
-**Pigpio({hostname: host, port: port, pipelining: true})**:
+**pigpioClient({host: '192.168.1.12', port: 8765, pipelining: true})**:
 
 Constructs a pigpio 
-client connected to host:port with pipelining enabled.
+Client connected to 192.168.1.12:8765 with pipelining enabled.
 Defaults are host=localhost, port=8888, pipelining=false.  On success,
 returns pigpio client object.
 
 
 
 ###Methods
-modeSet(gpio, mode):  Set gpio to 'in[put]' or 'out[put]'.
+pgio.modeSet(mode):  Set mode of gpio to 'in[put]' or 'out[put]'.
 
-modeGet(gpio, mode):  Returns the mode of gpio.
+gpio.modeGet(callback(mode)):  Returns the mode of gpio as argument to callback.
 
-pullUpDown(gpio, pud):  Sets the pullup or pulldown resistor for gpio.
+pgio.pullUpDown(pud):  Sets the pullup or pulldown resistor for gpio.
 
-read(gpio):  Returns the gpio level.
+gpio.read(callback(level)):  Returns the gpio level as argument to callback.
 
-write(gpio, level):  Set the gpio level.
+gpio.write(level):  Set the gpio level.
 
-waveClear(): clear all waveforms (wids are all reset).
+waveClear(): clear all waveforms (wave IDs are all reset).
 
-waveCreate(): Returns a wave id of waveform created from previous calls to
-waveAddPulse().
+waveCreate(cb(wid)): Returns a wave id of waveform created from previous calls to waveAddPulse().  Wave ID
+is the argument of callback.
 
 waveBusy():  Returns 1 if true, 0 if false, <0 if error.
 
-waveAddPulse(gpio, arrayOfPulse_t): Add one or more pulses to gpio of current
-waveform.
+gpio.waveAddPulse([Pulse_t], cb): Add one or more pulses to gpio of current waveform.
 
 waveChainTx([wids], {loop:x, delay:y}): Transmit a chain of wids.  Options object
 specifies loop and delay (between loop) values.
-	
+
+Notifications: The pigpio-client object automatically opens a second connection to pigpiod and issues
+pigpio command 'NOIB' (notification open in-band).  Notification methods apply only to gpio objects:
+
+ - gpio.notify(callback): Registers a notification callback for this gpio.  Callback is called
+	  whenever the gpio changes state.
+ - gpio.endNotify():  Unregisters the notification on gpio.	
+
+Added 3/16/2017 - bit-bang serial read methods  
+gpio.serialReadOpen(baudRate, dataBits)  
+gpio.serialRead(count, callback(err,length, ...bytes)  
+gpio.serialReadClose()  
+gpio.serialReadInvert('invert' || 'normal')  
+
 ###Todo
-- (in testing) Notifications: Open a new connection to pigpiod and issue pigpio command 'NOIB'
-which stands for 'notification open in-band.'  Return a notification object with methods:
-	- start(gpioBitMask): starts notfications on gpio bits in bit mask
-	- pause():  Pause further notifications.
-	- stop():  Close the currently open socket, handle and free pigpio resources.
 - noise filter
-- incorporate  GPIO.js into common module.  ie Pigpio.Gpio()

@@ -10,11 +10,12 @@ class MyEmitter extends EventEmitter {}
 const BR1=10,BR2=11,TICK=16,HWVER=17,PIGPV=26,PUD=2,MODES=0,MODEG=1;
 const READ=3,WRITE=4,PWM=5,WVCLR=27,WVCRE=49,WVBSY=32,WVAG=28,WVCHA=93;
 const NOIB=99,NB=19,NP=20,NC=21;
+const SLRO=42, SLR=43, SLRC=44, SLRI=94;
 // These command types return p3 as int32, otherwise p3 = uint32
 // ie, if (canNeverFailCmdSet.has(cmdValue)) console.log('int32')
 const canNeverFailCmdSet = new Set ([HWVER, PIGPV, BR1, BR2, TICK]);
-const extReqCmdSet = new Set ([WVCHA, WVAG]);
-const extResCmdSet = new Set (); // so far none implemented
+const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO]);
+const extResCmdSet = new Set (SLR); 
 /* pud */ 
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2;
 var info = {
@@ -500,6 +501,26 @@ that.gpio = function(gpio) {
 			tail[7] = options.repeat>>8;
 			request(WVCHA,0,0,arrBuf.byteLength,callback,arrBuf);
 		}
+		
+		this.serialReadOpen = function(baudRate, dataBits, callback) {
+			var arrBuf = new ArrayBuffer(4);
+			var bitsBuf = Uint32Array(arrBuf,0,1);
+			dataBitsBuf[0] = bits;
+			request(SLRO, gpio, baudRate, 4, callback, dataBitsBuf);
+		}
+		this.serialRead = function(count, callback) {
+			request(SLR, gpio, count, 0, callback);
+		}
+		this.serialReadClose = function(callback) {
+			request(SLRC, gpio, 0,0, callback);
+		}
+		this.serialReadInvert = function(mode, callback) {
+			var flag;
+			if (mode === 'invert') flag = 1;
+			if (mode === 'normal') flag = 0;
+			assert(typeof flag !== 'undefined');
+			request(SLRI, gpio, flag, 0, callback);
+		}		
 	
 	}//var gpio
 	_gpio.prototype = that; // inheritance
