@@ -15,7 +15,7 @@ const SLRO=42, SLR=43, SLRC=44, SLRI=94;
 // ie, if (canNeverFailCmdSet.has(cmdValue)) console.log('int32')
 const canNeverFailCmdSet = new Set ([HWVER, PIGPV, BR1, BR2, TICK]);
 const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO]);
-const extResCmdSet = new Set (SLR); 
+const extResCmdSet = new Set ([SLR]); 
 /* pud */ 
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2;
 var info = {
@@ -304,9 +304,7 @@ commandSocket.once('connect', ()=> {
 		let nc = Buffer.from(new Uint32Array([NC, handle, 0, 0]).buffer);
 			commandSocket.write(nc, ()=>{
 				if (typeof cb === 'function') cb();
-				// Todo: close/end notification socket?
-				//console.log('closing notification socket');
-				//notificationSocket.end(); // close, destroy socket
+				
 			});
 	}
 	that.isUserGpio = function(gpio) {
@@ -428,16 +426,21 @@ that.gpio = function(gpio) {
 				console.log('Warning: notifier already registered, ignored');
 				return;
 			}
-			let oldLevels = that.readBank1;
-			let gpioBitValue = 1<<gpio;
-			notifierID = that.startNotifications(gpioBitValue,(levels, tick)=> {
-				let changes = oldLevels ^ levels;
-				oldLevels = levels;
-				if (gpioBitValue & changes) {
-					let level = (gpioBitValue&levels)>>gpio;
-					callback(level,tick);
-				}
+			// get the current levels to compare against for changes
+			that.readBank1((levels)=>{
+				let oldLevels = levels;
+				// now detect if gpio level has changed
+				let gpioBitValue = 1<<gpio;
+				notifierID = that.startNotifications(gpioBitValue,(levels, tick)=> {
+					let changes = oldLevels ^ levels;
+					oldLevels = levels;
+					if (gpioBitValue & changes) {
+						let level = (gpioBitValue&levels)>>gpio;
+						callback(level,tick);
+					}
+				});
 			});
+			
 		}
 		this.endNotify = function () {
 			if (notifierID !== null) that.stopNotifications(notifierID);
@@ -504,8 +507,8 @@ that.gpio = function(gpio) {
 		
 		this.serialReadOpen = function(baudRate, dataBits, callback) {
 			var arrBuf = new ArrayBuffer(4);
-			var bitsBuf = Uint32Array(arrBuf,0,1);
-			dataBitsBuf[0] = bits;
+			var dataBitsBuf = new Uint32Array(arrBuf,0,1);
+			dataBitsBuf[0] = dataBits;
 			request(SLRO, gpio, baudRate, 4, callback, dataBitsBuf);
 		}
 		this.serialRead = function(count, callback) {

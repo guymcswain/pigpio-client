@@ -70,5 +70,11 @@ gpio.serialRead(count, callback(err,length, ...bytes)
 gpio.serialReadClose()  
 gpio.serialReadInvert('invert' || 'normal')  
 
+###Bugs
+- Inverted level on gpio.notify()
+
 ###Todo
 - noise filter
+- Notifications socket: check for notification errors response (res[3])
+- refactor waveChainTx, see fixme comment
+- test for callback queue underflow?
