@@ -61,8 +61,10 @@ Notifications: The pigpio-client object automatically opens a second connection 
 pigpio command 'NOIB' (notification open in-band).  Notification methods apply only to gpio objects:
 
  - gpio.notify(callback): Registers a notification callback for this gpio.  Callback is called
-	  whenever the gpio changes state.
- - gpio.endNotify():  Unregisters the notification on gpio.	
+	  whenever the gpio state changes.  Callback arguments are *level* and *tick* where *tick* represents
+	  the system's time since boot.
+ - gpio.endNotify():  Unregisters the notification on gpio.	 For convenience, a null *tick* value is sent.
+	  Useful for stream objects that wrap the notifier callback.
 
 Added 3/16/2017 - bit-bang serial read methods  
 gpio.serialReadOpen(baudRate, dataBits)  
@@ -72,6 +74,7 @@ gpio.serialReadInvert('invert' || 'normal')
 
 ###Bugs
 - Inverted level on gpio.notify()
+- Notify returns incorrect time every so often.  Suspect that fractional chunk is not processing correctly.
 
 ###Todo
 - noise filter

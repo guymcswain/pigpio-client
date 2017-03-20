@@ -162,6 +162,10 @@ exports.pigpio = function(pi) {
 	
 	// helper functions
 	var request = (cmd, p1, p2, p3, cb, extArrBuf)=> {
+//Todo:  To simplify this functionuse the following or similar:
+// let buf = Buffer.from(new Uint32Array([cmd, p1, p2, p3, extArrBuf]).buffer);
+// commandSocket.write(buf);
+		
 		var bufSize = 16;
 		if ( extReqCmdSet.has(cmd)) {
 			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
@@ -203,6 +207,7 @@ exports.pigpio = function(pi) {
 // Notifications socket = ToDo: check for notification errors response (res[3])
 	var handle;
 	var notificationSocket;
+	var chunklet = new Buffer.allocUnsafe(0); //notify chunk fragments
 commandSocket.once('connect', ()=> {
 	notificationSocket = net.createConnection(info.port, info.host, ()=> {
 		console.log('notifier socket connected on rpi host '+info.host);
@@ -213,19 +218,19 @@ commandSocket.once('connect', ()=> {
 				const res = new Uint32Array(resBuf);
 				handle = res[3];
 				console.log('opened notification socket with handle= '+handle);
+				
 				// connect listener that processes notification chunks
-				var chunk = new Buffer.allocUnsafe(0);
-				notificationSocket.on('data', function (chunklet) {
+				notificationSocket.on('data', function (chunk) {
 					// monitors all gpio bits and issues callback for all registered notifiers.
 					//console.log('got chunk'+JSON.stringify(chunk));
-					chunk = Buffer.concat([chunk,chunklet]);
-					let remainder = chunk.length%12;
+					var buf = Buffer.concat([chunklet,chunk]);
+					let remainder = buf.length%12;
 					
-					for (let i=0; i<chunk.length-remainder; i+=12) {
-						let seqno = chunk.readUInt16LE(i+0),
-							flags = chunk.readUInt16LE(i+2),
-							tick = chunk.readUInt32LE(i+4),
-							level = chunk.readUInt32LE(i+8);
+					for (let i=0; i<buf.length-remainder; i+=12) {
+						let seqno = buf.readUInt16LE(i+0),
+							flags = buf.readUInt16LE(i+2),
+							tick = buf.readUInt32LE(i+4),
+							level = buf.readUInt32LE(i+8);
 						if (flags === 0)
 							for (let nob of notifiers.keys())
 								nob.func(level, tick);
@@ -233,7 +238,7 @@ commandSocket.once('connect', ()=> {
 					if (remainder) {
 						//console.log('getting fractional chunks');
 						//save the chunk remainder
-						chunk = chunk.slice(chunk.length-remainder);
+						chunklet = buf.slice(buf.length-remainder);
 						
 					}
 				});
@@ -257,7 +262,10 @@ commandSocket.once('connect', ()=> {
 	/*** Public Methods ***/
 	
 	that.request = request;
-	
+
+// Notifications
+//	Must **always** use 'request()' to configure/control pigpio.  Ie, don't to this:
+//	commandSocket.write(...);  // will screw up request callbackQueue!!!
 	const MAX_NOTIFICATIONS = 32;
 	var nID = 0;
 	var notifiers = new Set();
@@ -275,38 +283,33 @@ commandSocket.once('connect', ()=> {
 		// Update monitor with bits
 		monitorBits |= bits;
 		// send 'notifiy begin' command
-		let nb = Buffer.from(new Uint32Array([NB, handle, monitorBits, 0]).buffer);
-		//console.log(notify_begin.toJSON());
-		commandSocket.write(nb);
+		request(NB, handle, monitorBits, 0);
 		
 		//return the callback 'id'
 		return nob.id;
 	}
 	that.pauseNotifications = function(cb) {
-	// Caution:  This will pause for all gpio!
-		let notify_pause = Buffer.from(new Uint32Array([NP, handle, 0, 0]).buffer);
-		commandSocket.write(notify_pause, ()=>{
-			if (typeof cb === 'function') cb();
-		});
+	// Caution:  This will pause **all** notifications!
+		request(NP, handle, 0, 0, cb);
 	}
 	that.stopNotifications = function(id) {
 		// Clear monitored bits and unregister callback
 		for (let nob of notifiers.keys())
 			if (nob.id === id) {
-				monitorBits &= ~nob.bits; // mask gpio bits to stop notifications
-				notifiers.delete(nob); // remove notifier object from set of notifiers
+				monitorBits &= ~nob.bits; // clear gpio bit in monitorBits
+				// Stop the notifications on pigpio hardware
+				request(NB, handle, monitorBits, 0, ()=>{
+					console.log('last call for notifier id'+nob.id);
+					nob.func(null,null); // last callback with null arguments
+					notifiers.delete(nob); // remove this notifier object
+				});
 			}
-		// Stop the notifications on pigpio hardware
-		let nb = Buffer.from(new Uint32Array([NB, handle, monitorBits, 0]).buffer);
-		commandSocket.write(nb);
 	}
-	that.closeNotifications = function() {
-		let nc = Buffer.from(new Uint32Array([NC, handle, 0, 0]).buffer);
-			commandSocket.write(nc, ()=>{
-				if (typeof cb === 'function') cb();
-				
-			});
+	that.closeNotifications = function(cb) {
+	// Caution: This will close **all** notifications!
+		request(NC, handle, 0, 0, cb);
 	}
+	
 	that.isUserGpio = function(gpio) {
 		return ((1<<gpio) &  info.userGpioMask)? true : false;
 	}
@@ -343,12 +346,13 @@ commandSocket.once('connect', ()=> {
 		commandSocket.destroy();
 		notificationSocket.destroy();
 	}
-	that.end = function() {
+	that.end = function(cb) {
 		// return all gpio to input mode with pull-up/down?
 		// clear any waveforms?
 		// other resets?
 		commandSocket.end();
 		notificationSocket.end();
+		notificationSocket.on('close', ()=>cb());
 	}
 
 /*___________________________________________________________________________*/
@@ -432,6 +436,11 @@ that.gpio = function(gpio) {
 				// now detect if gpio level has changed
 				let gpioBitValue = 1<<gpio;
 				notifierID = that.startNotifications(gpioBitValue,(levels, tick)=> {
+//Todo: janky code here, you fix it Mr Awesome!
+				if (levels===null) {
+						callback(null,null);
+						return;
+					}
 					let changes = oldLevels ^ levels;
 					oldLevels = levels;
 					if (gpioBitValue & changes) {
