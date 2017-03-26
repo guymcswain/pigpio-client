@@ -234,16 +234,17 @@ commandSocket.once('connect', ()=> {
 							flags = buf.readUInt16LE(i+2),
 							tick = buf.readUInt32LE(i+4),
 							level = buf.readUInt32LE(i+8);
-						if (flags === 0)
+						//if (flags === 0)
 							for (let nob of notifiers.keys())
 								nob.func(level, tick);
 					}
+					//save the chunk remainder
+					chunklet = buf.slice(buf.length-remainder);
+/*					// debug
 					if (remainder) {
-						//console.log('getting fractional chunks');
-						//save the chunk remainder
-						chunklet = buf.slice(buf.length-remainder);
-						
+						console.log('got remainder chunklet: '+remainder);	
 					}
+*/
 				});
 			});
 		});
