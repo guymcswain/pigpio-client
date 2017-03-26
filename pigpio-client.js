@@ -11,13 +11,16 @@ const BR1=10,BR2=11,TICK=16,HWVER=17,PIGPV=26,PUD=2,MODES=0,MODEG=1;
 const READ=3,WRITE=4,PWM=5,WVCLR=27,WVCRE=49,WVBSY=32,WVAG=28,WVCHA=93;
 const NOIB=99,NB=19,NP=20,NC=21;
 const SLRO=42, SLR=43, SLRC=44, SLRI=94;
+const WVTXM = 100, WVTAT = 101, WVDEL = 50;
 // These command types return p3 as int32, otherwise p3 = uint32
 // ie, if (canNeverFailCmdSet.has(cmdValue)) console.log('int32')
 const canNeverFailCmdSet = new Set ([HWVER, PIGPV, BR1, BR2, TICK]);
 const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO]);
 const extResCmdSet = new Set ([SLR]); 
-/* pud */ 
+/* other pigpio constants */ 
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2;
+const ONE_SHOT_SYNC = 2;
+
 var info = {
 	host: 'localhost',
 	port: 8888,
@@ -162,7 +165,7 @@ exports.pigpio = function(pi) {
 	
 	// helper functions
 	var request = (cmd, p1, p2, p3, cb, extArrBuf)=> {
-//Todo:  To simplify this functionuse the following or similar:
+//Todo:  To simplify this function use the following or similar:
 // let buf = Buffer.from(new Uint32Array([cmd, p1, p2, p3, extArrBuf]).buffer);
 // commandSocket.write(buf);
 		
@@ -352,7 +355,9 @@ commandSocket.once('connect', ()=> {
 		// other resets?
 		commandSocket.end();
 		notificationSocket.end();
-		notificationSocket.on('close', ()=>cb());
+		notificationSocket.on('close', ()=>{
+			if (typeof cb === 'function') cb();
+		});
 	}
 
 /*___________________________________________________________________________*/
@@ -395,13 +400,6 @@ that.gpio = function(gpio) {
 			// Assume pigpio library handles range error on pud argument!
 			request(PUD,gpio,pud,0,callback);
 		}
-/*
-		const gpio = (pi.isUserGpio(spec.gpio))? spec.gpio : null;
-		if (!gpio) throw({Error:'gpio is not a valid user pin'});
-		if (spec.mode) modeSet(gpio, spec.mode);
-		if (spec.pud) pullUpDown(gpio, spec.pud);
-*/			
-		var notifierID = null;
 
 	// basic methods
 		this.modeSet = function(...args) {modeSet(gpio, ...args)}
@@ -424,6 +422,8 @@ that.gpio = function(gpio) {
 			request(PWM,gpio,dutyCycle,0,cb);
 		}
 	// Notification methods
+		var notifierID = null;
+		
 		this.notify = function (callback) {
 			// only allow one notifier per gpio object
 			if (notifierID !== null) {
@@ -512,6 +512,16 @@ that.gpio = function(gpio) {
 			tail[6] = options.repeat&0xff;
 			tail[7] = options.repeat>>8;
 			request(WVCHA,0,0,arrBuf.byteLength,callback,arrBuf);
+		}
+		
+		this.waveSendSync = function(wid, cb) {
+			request(WVTXM, wid, ONE_SHOT_SYNC, 0, cb);
+		}
+		this.waveTxAt = function(cb) {
+			request(WVTAT, 0, 0, 0, cb);
+		}
+		this.waveDelete = function(wid, cb) {
+			request(WVDEL, wid, 0, 0, cb);
 		}
 		
 		this.serialReadOpen = function(baudRate, dataBits, callback) {

@@ -16,13 +16,15 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 	myPin.notify((buf)=> {
 		//buf is Buffer object containing 16-bit sequence, 16-bit flags, 32-bit tick, 32-bit level
 	});
+	// you should monitor for errors
+	myPi.on('error', (err)=> {
+		console.log(`pigpio error = ${err}`);
+	});
 
-Callback arguments are optional.  Network request and responses are serialized 
-by default.  To enablepipeling of requests, set the pipelining configuration option to true.  Leave 
-pipelining disabled as it is experimental.
-
-
-API - Update 12-2-15:  Callback arguments returned are now: (err, res, ...ext).
+Arguments to callback are: (err, res, ...ext).
+Callbacks arguments are optional in most cases.  Network request and responses are serialized 
+allowing pigpio commands to be sent back-to-back without waiting for a response.  Network socket requests
+can be pipelined but this feature is experimental.  Pipelining default is disabled.
 
 ###Constructor
 **pigpioClient({host: '192.168.1.12', port: 8765, pipelining: true})**:
@@ -45,32 +47,46 @@ gpio.read(callback(level)):  Returns the gpio level as argument to callback.
 
 gpio.write(level):  Set the gpio level.
 
-waveClear(): clear all waveforms (wave IDs are all reset).
+gpio.waveClear(): clear all waveforms (wave IDs are all reset).
 
-waveCreate(cb(wid)): Returns a wave id of waveform created from previous calls to waveAddPulse().  Wave ID
+gpio.waveCreate(cb(wid)): Returns a wave id of waveform created from previous calls to waveAddPulse().  Wave ID
 is the argument of callback.
 
-waveBusy():  Returns 1 if true, 0 if false, <0 if error.
+gpio.waveBusy():  Returns 1 if true, 0 if false, <0 if error.
 
-gpio.waveAddPulse([Pulse_t], cb): Add one or more pulses to gpio of current waveform.
+gpio.waveAddPulse([Pulse_t], cb): Add one or more pulses to gpio of current waveform.  Pulse_t is 
+[gpioOn, gpioOff, delay]
 
-waveChainTx([wids], {loop:x, delay:y}): Transmit a chain of wids.  Options object
+gpio.waveChainTx([wids], {loop:x, delay:y}): Transmit a chain of wids.  Options object
 specifies loop and delay (between loop) values.
 
-Notifications: The pigpio-client object automatically opens a second connection to pigpiod and issues
-pigpio command 'NOIB' (notification open in-band).  Notification methods apply only to gpio objects:
+Note:  waveClear, waveCreate and waveBusy are not gpio specific.  These methods are made available to the
+gpio object for convenience and as a reminder that only a single waveform can be active.  (Is this true?)
 
- - gpio.notify(callback): Registers a notification callback for this gpio.  Callback is called
+pi.end():  Ends communications on command and notifications socket.  Callback issued after 'close' event is
+received for notification socket.
+
+pi.destroy():  Destroys command and notification sockets.
+
+####Notifications
+The pigpio-client object automatically opens a second connection to pigpiod for notifications on gpio pins.
+This is done by issuing the 'NOIB' (notification open in-band) command to the command socket.
+
+gpio.notify(callback): Registers a notification callback for this gpio.  Callback is called
 	  whenever the gpio state changes.  Callback arguments are *level* and *tick* where *tick* represents
-	  the system's time since boot.
- - gpio.endNotify():  Unregisters the notification on gpio.	 For convenience, a null *tick* value is sent.
+	  the system's time since boot.  
+gpio.endNotify():  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.
 	  Useful for stream objects that wrap the notifier callback.
 
-Added 3/16/2017 - bit-bang serial read methods  
+####bit-bang serial read methods  
 gpio.serialReadOpen(baudRate, dataBits)  
 gpio.serialRead(count, callback(err,length, ...bytes)  
 gpio.serialReadClose()  
 gpio.serialReadInvert('invert' || 'normal')  
+
+gpio.waveTxAt():  return currently actie wid  
+gpio.waveSendSync(wid): synchronizes the wid to the currently active waveform.  
+gpio.waveDelete(wid): delete this wid.  Note: Bad things can happen if wid is currently active.
 
 ###Bugs
 - Inverted level on gpio.notify()
