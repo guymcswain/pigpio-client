@@ -19,8 +19,7 @@ const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO]);
 const extResCmdSet = new Set ([SLR]); 
 /* other pigpio constants */ 
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2;
-const ONE_SHOT_SYNC = 2;
-
+const PI_WAVE_MODE_ONE_SHOT=0, PI_WAVE_MODE_REPEAT=1, PI_WAVE_MODE_ONE_SHOT_SYNC=2, PI_WAVE_MODE_REPEAT_SYNC=3;
 var info = {
 	host: 'localhost',
 	port: 8888,
@@ -75,7 +74,7 @@ exports.pigpio = function(pi) {
 
 	});
 	commandSocket.on('error', function(err) {
-		that.emit('error', {type: "network error", error: err});
+		that.emit('error', new Error('pigpio-client network error:'+JSON.stringify(err)));
 	});
 	commandSocket.on('end', function() {
 		console.log('pigpio end received');
@@ -131,8 +130,7 @@ exports.pigpio = function(pi) {
 						extLen = 0;
 						if (p3[0] < 0) {
 							err = p3[0]; // param[3] contains error code (negative)
-							if (that.emit('error', {type: 'pigpio', error: p3[0]}))
-								console.log('Houston, we have a problem.');
+							that.emit('error', new Error('pigio-client response:'+p3[0]));
 						}
 				}
 			}
@@ -252,7 +250,7 @@ commandSocket.once('connect', ()=> {
 
 	
 	notificationSocket.on('error', function(err) {
-		that.emit('error', {type: "network error:", error: err});
+		that.emit('error', new Error('pigpio-client notification socket:'+JSON.stringify(err)));
 	});
 	notificationSocket.on('end', function() {
 		console.log('pigpio notification end received');
@@ -467,6 +465,16 @@ that.gpio = function(gpio) {
 		this.waveBusy = function(callback) {
 			request(WVBSY,0,0,0,callback);
 		}
+		this.waveNotBusy = function(interval, callback) {
+			let timer = setInterval( ()=> {
+				request(WVBSY,0,0,0, (err, busy)=> {
+					if (!busy) {
+						clearInterval(timer);
+						callback();
+					}
+				});
+			}, interval);
+		}
 		this.waveAddPulse = function(tripletArr, callback) {
 			//test triplets is an array of arrays
 			tripletArr.forEach( function(triplet) {
@@ -516,7 +524,10 @@ that.gpio = function(gpio) {
 		}
 		
 		this.waveSendSync = function(wid, cb) {
-			request(WVTXM, wid, ONE_SHOT_SYNC, 0, cb);
+			request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT_SYNC, 0, cb);
+		}
+		this.waveSendOnce = function(wid, cb) {
+			request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT, 0, cb);
 		}
 		this.waveTxAt = function(cb) {
 			request(WVTAT, 0, 0, 0, cb);
