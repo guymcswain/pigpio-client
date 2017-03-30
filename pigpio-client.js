@@ -130,7 +130,7 @@ exports.pigpio = function(pi) {
 						extLen = 0;
 						if (p3[0] < 0) {
 							err = p3[0]; // param[3] contains error code (negative)
-							that.emit('error', new Error('pigio-client response:'+p3[0]));
+							that.emit('error', new Error('pigio-client res:'+p3[0]+' cmd:'+cmd[0]));
 						}
 				}
 			}
