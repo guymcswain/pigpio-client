@@ -134,6 +134,10 @@ exports.pigpio = function(pi) {
 						}
 				}
 			}
+			if (process.env.DEBUG) {
+				let b = resBuf.slice(0,16).toJSON().data;
+				console.log("response= ",...b);
+			}
 			resBuf = resBuf.slice(extLen + 16); // leave remainder for later processing
 			// process the response callback
 			var callback = callbackQueue.shift(); // FIXME: test for queue underflow
@@ -146,18 +150,18 @@ exports.pigpio = function(pi) {
 				commandSocket.write(req.buffer);
 				callbackQueue.push(req.callback);
 				if (process.env.DEBUG) {
-					let b = req.buffer.toJSON().data;
-					console.log("deferred request=\n",...b);
+					let b = req.buffer.slice(0,16).toJSON().data;//w/o ext params!
+					console.log("deferred request= ",...b);
 				}
 			}
 			return;
 		} // responseHandler
 		
 		resBuf = Buffer.concat([resBuf, chunk]);
-		if (process.env.DEBUG) {
-			let b = resBuf.toJSON().data;
-			console.log("response=\n",...b);
-		}
+		//if (process.env.DEBUG) {
+		//	let b = resBuf.toJSON().data;
+		//	console.log("response=\n",...b);
+		//}
 		if (resBuf.length >= 16) responseHandler();
 	});
 	
@@ -191,8 +195,8 @@ exports.pigpio = function(pi) {
 			commandSocket.write(buf);
 			callbackQueue.push(cb);
 			if (process.env.DEBUG) {
-				let b = buf.toJSON().data;
-				console.log("request=\n",...b);
+				let b = buf.slice(0,16).toJSON().data; // exclude extended params!
+				console.log("request= ",...b);
 			}
 		}
 	} // request()
@@ -465,16 +469,31 @@ that.gpio = function(gpio) {
 		this.waveBusy = function(callback) {
 			request(WVBSY,0,0,0,callback);
 		}
-		this.waveNotBusy = function(interval, callback) {
-			let timer = setInterval( ()=> {
+/*
+		this.waveNotBusy = function(time, callback) {
+			let timer = time || 25;
+			let waitWaveBusy = (done)=> {
 				request(WVBSY,0,0,0, (err, busy)=> {
-					if (!busy) {
-						clearInterval(timer);
-						callback();
-					}
+					if (!busy) done();
+					else setTimeout( ()=>waitWaveBusy(done),timer);
 				});
-			}, interval);
+			}
+			waitWaveBusy(callback);
 		}
+*/
+		this.waveNotBusy = function(time, callback) {
+			let timer = time || 25;
+			let waitWaveBusy = (done)=> {
+				setTimeout( ()=> {
+					request(WVBSY,0,0,0, (err, busy)=> {
+						if (!busy) done();
+						else waitWaveBusy(done);
+					});
+				},timer);
+			}
+			waitWaveBusy(callback);
+		}
+		
 		this.waveAddPulse = function(tripletArr, callback) {
 			//test triplets is an array of arrays
 			tripletArr.forEach( function(triplet) {
