@@ -84,7 +84,7 @@ exports.pigpio = function(pi) {
 			else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
 	});
 
-	var resBuf = new Buffer.allocUnsafe(0);  // see responseHandler()
+	var resBuf = Buffer.allocUnsafe(0);  // see responseHandler()
 	
 	commandSocket.on('data', (chunk)=> {
 	
@@ -137,6 +137,10 @@ exports.pigpio = function(pi) {
 			if (process.env.DEBUG) {
 				let b = resBuf.slice(0,16).toJSON().data;
 				console.log("response= ",...b);
+				if (resBuf.length > 16) {
+					let bx = resBuf.slice(16).toJSON().data;
+					console.log("extended params= ",...bx);
+				}
 			}
 			resBuf = resBuf.slice(extLen + 16); // leave remainder for later processing
 			// process the response callback
@@ -152,6 +156,10 @@ exports.pigpio = function(pi) {
 				if (process.env.DEBUG) {
 					let b = req.buffer.slice(0,16).toJSON().data;//w/o ext params!
 					console.log("deferred request= ",...b);
+					if (req.buffer.length > 16) {
+						let bx = req.buffer.slice(16).toJSON().data; // w/ext
+						console.log("extended params= ",...bx);
+					}
 				}
 			}
 			return;
@@ -176,7 +184,7 @@ exports.pigpio = function(pi) {
 			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
 			bufSize = 16 + extArrBuf.byteLength;
 		}
-		var buf = new Buffer.allocUnsafe(bufSize);
+		var buf = Buffer.allocUnsafe(bufSize);
 		buf.writeUInt32LE(cmd,0);
 		buf.writeUInt32LE(p1,4);
 		buf.writeUInt32LE(p2,8);
@@ -197,6 +205,10 @@ exports.pigpio = function(pi) {
 			if (process.env.DEBUG) {
 				let b = buf.slice(0,16).toJSON().data; // exclude extended params!
 				console.log("request= ",...b);
+				if (bufSize > 16) {
+					let bx = buf.slice(16).toJSON().data; // extended params
+					console.log("extended params= ",...bx);
+				}
 			}
 		}
 	} // request()
@@ -212,7 +224,7 @@ exports.pigpio = function(pi) {
 // Notifications socket = ToDo: check for notification errors response (res[3])
 	var handle;
 	var notificationSocket;
-	var chunklet = new Buffer.allocUnsafe(0); //notify chunk fragments
+	var chunklet = Buffer.allocUnsafe(0); //notify chunk fragments
 commandSocket.once('connect', ()=> {
 	notificationSocket = net.createConnection(info.port, info.host, ()=> {
 		console.log('notifier socket connected on rpi host '+info.host);
@@ -637,6 +649,8 @@ that.serialport = function(rx,tx,dtr) {
 						callback(null);
 					}
 				});
+				// initialize tx
+				_tx.waveClear();
 			} else {
 				isOpen = false;
 				callback("Error: invalid arguments");
@@ -661,15 +675,14 @@ that.serialport = function(rx,tx,dtr) {
 		}
 		this.write = function(data) {
 			let wid;
-			// use WVAS to add serial data to the next waveform
 			let arrBuf = new ArrayBuffer(12+data.length);
 			let paramBuf = new Uint32Array(arrBuf,0,3);
-			//paramBuf = [bits 2, delay]; // data bits, stop half bits, delay
-			paramBuf[0] = bits; paramBuf[1]=2; paramBuf[2]=delay;
-			let dataBuf = new Uint8Array(arrBuf,12);
-			dataBuf = data;
+			paramBuf[0]= bits; paramBuf[1]=2; paramBuf[2]=delay;
+			let arrBuf8View = new Uint8Array(arrBuf);
+			for (let i=0; i<data.length; i++) arrBuf8View[i+12] = data.charCodeAt(i);
+			// use WVAS to add serial data to the next waveform
 			let callback;
-			request(WVAS, tx, baud, arrBuf.byteLength, callback, arrBuf)
+			request(WVAS, tx, baud, arrBuf.byteLength, callback, arrBuf);
 			_tx.waveCreate((id)=> {
 				wid = id;
 				//for now just wait not busy.  Todo: sync it
