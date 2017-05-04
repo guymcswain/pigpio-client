@@ -11,11 +11,11 @@ const BR1=10,BR2=11,TICK=16,HWVER=17,PIGPV=26,PUD=2,MODES=0,MODEG=1;
 const READ=3,WRITE=4,PWM=5,WVCLR=27,WVCRE=49,WVBSY=32,WVAG=28,WVCHA=93;
 const NOIB=99,NB=19,NP=20,NC=21;
 const SLRO=42, SLR=43, SLRC=44, SLRI=94;
-const WVTXM = 100, WVTAT = 101, WVDEL = 50;
+const WVTXM = 100, WVTAT = 101, WVDEL = 50, WVAS = 29;
 // These command types return p3 as int32, otherwise p3 = uint32
 // ie, if (canNeverFailCmdSet.has(cmdValue)) console.log('int32')
 const canNeverFailCmdSet = new Set ([HWVER, PIGPV, BR1, BR2, TICK]);
-const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO]);
+const extReqCmdSet = new Set ([WVCHA, WVAG, SLRO, WVAS]);
 const extResCmdSet = new Set ([SLR]); 
 /* other pigpio constants */ 
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2;
@@ -481,8 +481,16 @@ that.gpio = function(gpio) {
 			waitWaveBusy(callback);
 		}
 */
-		this.waveNotBusy = function(time, callback) {
-			let timer = time || 25;
+		this.waveNotBusy = function(time, cb) {
+			let timer, callback;
+			
+			if (typeof time !== 'number') {
+				timer = 25;
+				callback = time;
+			} else {
+				timer = time;
+				callback = cb;
+			}
 			let waitWaveBusy = (done)=> {
 				setTimeout( ()=> {
 					request(WVBSY,0,0,0, (err, busy)=> {
@@ -579,5 +587,108 @@ that.gpio = function(gpio) {
 	_gpio.prototype = that; // inheritance
 	return new _gpio(gpio);
 }//that.gpio constructor
+/*
+--------------- Serial Port Construtor ----------------------------------------
+Return a serialport object using specified pins.  Frame format is 1-32 databits,
+no parity and 1 stop bit.  Baud rates from 50-250000 are allowed.  For now, we
+implement a serial port suitable for interfacing with AVR/Arduino.
+Usage: Application must poll for read data to prevent data loss.  Read method
+uses callback.  (Desire to make this readable.read() like)
+Todo: - make rts/cts, dsr/dtr more general purpose.
+	  - implement duplex stream api
+*/
+that.serialport = function(rx,tx,dtr) {
+	var _serialport = function(rx, tx, dtr) {
+		var baud, bits, delay=0, isOpen=false, current_wid = undefined;
+		// check gpio pins are valid and (todo) available
+		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
+			return undefined;
+		var _rx = new that.gpio(rx);
+		var _tx = new that.gpio(tx);
+		var _dtr = new that.gpio(dtr);
+		_rx.modeSet('input'); // need a pullup?
+		_tx.modeSet('output');
+		_tx.write(1);
+		_dtr.modeSet('output');
+		_dtr.write(1);
+		this.open = function(baudrate, databits, callback) {
+			baud = baudrate || 9600;
+			baud = (49>baud<250001) ? baud : 0;
+			bits = databits || 8;
+			bits = (0>bits<33) ? bits : 0;
+			if (baud>0 && bits>0) {
+				// initialize rx
+				_rx.serialReadOpen(baud, bits, (err)=> {
+					if (err==-50) {
+						// if err is -50 we may have crashed without closing
+						_rx.serialReadClose(); // close it and try again
+						isOpen = false;
+						callback('port in use, closing, try again');
+					} else if (err) {
+						isOpen = false;
+						callback('Error opening serialport: '+err);
+					}
+					else { // serial rx is open
+						isOpen = true;
+						// pulse dtr pin to reset Arduino
+						_dtr.write(0, ()=> {
+							setTimeout( ()=> {_dtr.write(1)}, 1);
+						});
+						callback(null);
+					}
+				});
+			} else {
+				isOpen = false;
+				callback("Error: invalid arguments");
+			}
+		}
+		this.read = function(size, cb) {
+			let count, callb;
+			if (typeof size === 'function') {
+				callb = size;
+				count = 1;
+			} else {
+				callb = cb;
+				count = size || 1; // must read at least a byte at a time
+			}
+			if (isOpen) {
+				// Todo: implement readable.read() like.  For now just use callback.
+				_rx.serialRead(count, (err,len,...bytes)=> {
+					if (err) console.log("Error: rx read!");
+					callb(bytes);
+				});
+			} else callb(null);
+		}
+		this.write = function(data) {
+			let wid;
+			// use WVAS to add serial data to the next waveform
+			let arrBuf = new ArrayBuffer(12+data.length);
+			let paramBuf = new Uint32Array(arrBuf,0,3);
+			//paramBuf = [bits 2, delay]; // data bits, stop half bits, delay
+			paramBuf[0] = bits; paramBuf[1]=2; paramBuf[2]=delay;
+			let dataBuf = new Uint8Array(arrBuf,12);
+			dataBuf = data;
+			let callback;
+			request(WVAS, tx, baud, arrBuf.byteLength, callback, arrBuf)
+			_tx.waveCreate((id)=> {
+				wid = id;
+				//for now just wait not busy.  Todo: sync it
+				_tx.waveNotBusy( ()=> {
+					_tx.waveSendOnce(wid);
+					// clean up, recycle wids
+					if (typeof current_wid == 'number') {
+						_tx.waveDelete(current_wid);
+					}
+					current_wid = wid;
+				});
+			});
+		}
+		this.close = function(callback) {
+			_rx.serialReadClose(callback);
+		}
+	}//serialport
+	_serialport.prototype = that;
+	return new _serialport(rx,tx,dtr);
+}//pigpio serialport constructor
 	return that;
 }//pigpio constructor
