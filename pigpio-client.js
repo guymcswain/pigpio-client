@@ -175,10 +175,17 @@ exports.pigpio = function(pi) {
 	
 	// helper functions
 	var request = (cmd, p1, p2, p3, cb, extArrBuf)=> {
-//Todo:  To simplify this function use the following or similar:
-// let buf = Buffer.from(new Uint32Array([cmd, p1, p2, p3, extArrBuf]).buffer);
-// commandSocket.write(buf);
-		
+	//Todo:  To simplify this function use the following or similar:
+		//var buf = Buffer.from(new Uint32Array([cmd, p1, p2, p3, extArrBuf]).buffer);
+		var bufSize = 16;
+		var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer); //basic
+		if ( extReqCmdSet.has(cmd)) {
+			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
+			bufSize = 16 + extArrBuf.byteLength;
+			let extBuf = Buffer.from(extArrBuf); //extension
+			buf = Buffer.concat([buf,extBuf]);
+		}
+/*		
 		var bufSize = 16;
 		if ( extReqCmdSet.has(cmd)) {
 			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
@@ -195,7 +202,7 @@ exports.pigpio = function(pi) {
 			for (let i=0; i<extArrBuf.byteLength; i++)
 				buf[i+16] = extUint8[i];
 		}
-
+*/
 		// Queue request if request queue is no empty OR callback queue is not empty and pipelining disabled
 		if (requestQueue.length>0 || (callbackQueue.length>0 && !info.pipelining))
 			requestQueue.push({buffer:buf, callback:cb });
@@ -579,7 +586,7 @@ that.gpio = function(gpio) {
 			var arrBuf = new ArrayBuffer(4);
 			var dataBitsBuf = new Uint32Array(arrBuf,0,1);
 			dataBitsBuf[0] = dataBits;
-			request(SLRO, gpio, baudRate, 4, callback, dataBitsBuf);
+			request(SLRO, gpio, baudRate, 4, callback, arrBuf);
 		}
 		this.serialRead = function(count, callback) {
 			request(SLR, gpio, count, 0, callback);
