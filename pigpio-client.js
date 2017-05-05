@@ -175,8 +175,6 @@ exports.pigpio = function(pi) {
 	
 	// helper functions
 	var request = (cmd, p1, p2, p3, cb, extArrBuf)=> {
-	//Todo:  To simplify this function use the following or similar:
-		//var buf = Buffer.from(new Uint32Array([cmd, p1, p2, p3, extArrBuf]).buffer);
 		var bufSize = 16;
 		var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer); //basic
 		if ( extReqCmdSet.has(cmd)) {
@@ -185,24 +183,7 @@ exports.pigpio = function(pi) {
 			let extBuf = Buffer.from(extArrBuf); //extension
 			buf = Buffer.concat([buf,extBuf]);
 		}
-/*		
-		var bufSize = 16;
-		if ( extReqCmdSet.has(cmd)) {
-			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
-			bufSize = 16 + extArrBuf.byteLength;
-		}
-		var buf = Buffer.allocUnsafe(bufSize);
-		buf.writeUInt32LE(cmd,0);
-		buf.writeUInt32LE(p1,4);
-		buf.writeUInt32LE(p2,8);
-		buf.writeUInt32LE(p3,12);
 
-		if (bufSize > 16) {
-			var extUint8 = new Uint8Array(extArrBuf);
-			for (let i=0; i<extArrBuf.byteLength; i++)
-				buf[i+16] = extUint8[i];
-		}
-*/
 		// Queue request if request queue is no empty OR callback queue is not empty and pipelining disabled
 		if (requestQueue.length>0 || (callbackQueue.length>0 && !info.pipelining))
 			requestQueue.push({buffer:buf, callback:cb });
@@ -657,7 +638,8 @@ that.serialport = function(rx,tx,dtr) {
 					}
 				});
 				// initialize tx
-				_tx.waveClear();
+				//_tx.waveClear();
+				request(53,0,0,0);  // init new wave
 			} else {
 				isOpen = false;
 				callback("Error: invalid arguments");
@@ -682,14 +664,12 @@ that.serialport = function(rx,tx,dtr) {
 		}
 		this.write = function(data) {
 			let wid;
-			let arrBuf = new ArrayBuffer(12+data.length);
-			let paramBuf = new Uint32Array(arrBuf,0,3);
-			paramBuf[0]= bits; paramBuf[1]=2; paramBuf[2]=delay;
-			let arrBuf8View = new Uint8Array(arrBuf);
-			for (let i=0; i<data.length; i++) arrBuf8View[i+12] = data.charCodeAt(i);
+			let dataBuf = Buffer.from(data);
+			let paramBuf = Buffer.from(Uint32Array.from([bits,2,delay]).buffer);
+			let buf = Buffer.concat([paramBuf,dataBuf]);
 			// use WVAS to add serial data to the next waveform
 			let callback;
-			request(WVAS, tx, baud, arrBuf.byteLength, callback, arrBuf);
+			request(WVAS, tx, baud, buf.length, callback, buf);
 			_tx.waveCreate((id)=> {
 				wid = id;
 				//for now just wait not busy.  Todo: sync it
