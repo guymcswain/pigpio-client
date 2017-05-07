@@ -24,11 +24,11 @@ var info = {
 	host: 'localhost',
 	port: 8888,
 	pipelining: false,
-	conn1: false,
-	conn2: false,
+	conn1: false,		// command socket connection status
+	conn2: false,		// notification socket connnection status
 	pigpioVersion: '',
 	hwVersion: '',
-	hardware_type: 2, // 26 pin plus 8 pin connectors (ie rpi model B)
+	hardware_type: 2,	// 26 pin plus 8 pin connectors (ie rpi model B)
 	userGpioMask: 0xfbc6cf9c,
 }
 /*****************************************************************************/
@@ -67,21 +67,23 @@ exports.pigpio = function(pi) {
 					info.userGpioMask = 0xffffffc;
 				}
 				info.conn1 = true;
-				that.emit('connected');
+				//that.emit('connected'); see notificationSocket
 			});
 		});
 		
 
 	});
 	commandSocket.on('error', function(err) {
-		that.emit('error', new Error('pigpio-client network error:'+JSON.stringify(err)));
+		that.emit('error', new Error('pigpio-client command socket:'+JSON.stringify(err)));
 	});
 	commandSocket.on('end', function() {
 		console.log('pigpio end received');
 	});
 	commandSocket.on('close', function() {
-		if (info.conn1) console.log('pigpio connection closed');
-			else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		if (info.conn1) {
+			if (process.env.DEBUG)
+				console.log('pigpio connection closed');
+		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
 	});
 
 	var resBuf = Buffer.allocUnsafe(0);  // see responseHandler()
@@ -215,6 +217,9 @@ exports.pigpio = function(pi) {
 	var chunklet = Buffer.allocUnsafe(0); //notify chunk fragments
 commandSocket.once('connect', ()=> {
 	notificationSocket = net.createConnection(info.port, info.host, ()=> {
+		info.conn2 = true;
+		that.emit('connected');
+		if (process.env.DEBUG)
 		console.log('notifier socket connected on rpi host '+info.host);
 		let noib = Buffer.from(new Uint32Array([NOIB,0,0,0]).buffer);
 		notificationSocket.write(noib, ()=>{
@@ -222,6 +227,7 @@ commandSocket.once('connect', ()=> {
 			notificationSocket.once('data', (resBuf)=> {
 				const res = new Uint32Array(resBuf);
 				handle = res[3];
+				if (process.env.DEBUG)
 				console.log('opened notification socket with handle= '+handle);
 				
 				// connect listener that processes notification chunks
@@ -260,8 +266,10 @@ commandSocket.once('connect', ()=> {
 		console.log('pigpio notification end received');
 	});
 	notificationSocket.on('close', function() {
-		if (info.conn1) console.log('pigpio notification closed');
-			else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		if (info.conn2) {
+			if (process.env.DEBUG)
+				console.log('pigpio notification closed');
+		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
 	});
 });
 	
@@ -332,16 +340,9 @@ commandSocket.once('connect', ()=> {
 \tnotifications socket connected : ${info.conn2}`);
 	}
 	that.connected = function() { // for legacy
+		console.log("connected method is deprecated, use 'connected' event");
 		return info.conn1;
 	}
-/*
-	that.pigpv = function () { // get pigpio version
-		return pigpioVersion;
-	}
-	that.hwver = function () { // get hardware version
-		return hwVersion;
-	}
-*/
 	that.getCurrentTick = function(cb) {
 		that.request(TICK,0,0,0,cb);
 	}
@@ -349,6 +350,7 @@ commandSocket.once('connect', ()=> {
 		that.request(BR1,0,0,0,cb);
 	}
 	that.destroy = function() {
+		// Shoul only be called if an error occurs on socket
 		commandSocket.destroy();
 		notificationSocket.destroy();
 	}
@@ -356,10 +358,18 @@ commandSocket.once('connect', ()=> {
 		// return all gpio to input mode with pull-up/down?
 		// clear any waveforms?
 		// other resets?
+		let ended = false;
 		commandSocket.end();
 		notificationSocket.end();
+		commandSocket.on('close', () => {
+			if (ended) {
+				if (typeof cb === 'function') cb();
+			} else ended = true;
+		});
 		notificationSocket.on('close', ()=>{
-			if (typeof cb === 'function') cb();
+			if (ended) {
+				if (typeof cb === 'function') cb();
+			} else ended = true;
 		});
 	}
 
@@ -656,9 +666,18 @@ that.serialport = function(rx,tx,dtr) {
 			}
 			if (isOpen) {
 				// Todo: implement readable.read() like.  For now just use callback.
+	//If the size argument is not specified, all of the data contained
+	//in the internal buffer will be returned.
 				_rx.serialRead(count, (err,len,...bytes)=> {
-					if (err) console.log("Error: rx read!");
-					callb(bytes);
+					if (err) {
+						console.log("Serialport rx error: "+err);
+						callb(null);
+					} else if (len===0) {
+						callb(null);
+					} else {
+						let buf = Buffer.from(bytes);
+						callb(buf);
+					}
 				});
 			} else callb(null);
 		}
@@ -684,8 +703,13 @@ that.serialport = function(rx,tx,dtr) {
 			});
 		}
 		this.close = function(callback) {
-			_rx.serialReadClose(callback);
+			_rx.serialReadClose( () => {
+			_tx.modeSet('input', () => {
+			_dtr.modeSet('input',() => {
+				callback();
+		}); }); });
 		}
+
 	}//serialport
 	_serialport.prototype = that;
 	return new _serialport(rx,tx,dtr);
