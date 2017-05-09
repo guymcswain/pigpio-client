@@ -111,7 +111,6 @@ exports.pigpio = function(pi) {
 				//res[0] = p3[0];
 			} else {
 				var p3 = new Int32Array(resArrBuf,12,1);
-//debugger
 				if (p3[0] > 0) {
 					// is this extended response?
 					if (extResCmdSet.has(cmd[0])) {
@@ -139,7 +138,7 @@ exports.pigpio = function(pi) {
 			if (process.env.DEBUG) {
 				let b = resBuf.slice(0,16).toJSON().data;
 				console.log("response= ",...b);
-				if (resBuf.length > 16) {
+				if (extLen > 0) {
 					let bx = resBuf.slice(16).toJSON().data;
 					console.log("extended params= ",...bx);
 				}
@@ -180,7 +179,8 @@ exports.pigpio = function(pi) {
 		var bufSize = 16;
 		var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer); //basic
 		if ( extReqCmdSet.has(cmd)) {
-			assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
+			//following is not true for waveAddSerial!
+			//assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
 			bufSize = 16 + extArrBuf.byteLength;
 			let extBuf = Buffer.from(extArrBuf); //extension
 			buf = Buffer.concat([buf,extBuf]);
@@ -494,14 +494,14 @@ that.gpio = function(gpio) {
 		this.waveNotBusy = function(time, cb) {
 			let timer, callback;
 			
-			if (typeof time !== 'number') {
+		if (typeof time !== 'number') {
 				timer = 25;
 				callback = time;
 			} else {
 				timer = time;
 				callback = cb;
 			}
-			let waitWaveBusy = (done)=> {
+			var waitWaveBusy = (done)=> {
 				setTimeout( ()=> {
 					request(WVBSY,0,0,0, (err, busy)=> {
 						if (!busy) done();
@@ -591,7 +591,15 @@ that.gpio = function(gpio) {
 			if (mode === 'normal') flag = 0;
 			assert(typeof flag !== 'undefined');
 			request(SLRI, gpio, flag, 0, callback);
-		}		
+		}
+		this.waveAddSerial = function(baud, bits, delay, data, callback) {
+			let dataBuf = Buffer.from(data);
+			let paramBuf = Buffer.from(Uint32Array.from([bits,2,delay]).buffer);
+			let buf = Buffer.concat([paramBuf,dataBuf]);
+			// request take array buffer (this conversion from ZachB on SO)
+			//let arrBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+			request(WVAS, gpio, baud, buf.length, callback, buf);
+		}
 	
 	}//var gpio
 	_gpio.prototype = that; // inheritance
@@ -609,7 +617,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 */
 that.serialport = function(rx,tx,dtr) {
 	var _serialport = function(rx, tx, dtr) {
-		var baud, bits, delay=0, isOpen=false, current_wid = undefined;
+		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid;
 		// check gpio pins are valid and (todo) available
 		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
 			return undefined;
@@ -629,7 +637,7 @@ that.serialport = function(rx,tx,dtr) {
 			if (baud>0 && bits>0) {
 				// initialize rx
 				_rx.serialReadOpen(baud, bits, (err)=> {
-					if (err==-50) {
+					if (err===-50) {
 						// if err is -50 we may have crashed without closing
 						_rx.serialReadClose(); // close it and try again
 						isOpen = false;
@@ -642,7 +650,7 @@ that.serialport = function(rx,tx,dtr) {
 						isOpen = true;
 						// pulse dtr pin to reset Arduino
 						_dtr.write(0, ()=> {
-							setTimeout( ()=> {_dtr.write(1)}, 1);
+							setTimeout( ()=> {_dtr.write(1)}, 100);
 						});
 						callback(null);
 					}
@@ -682,32 +690,40 @@ that.serialport = function(rx,tx,dtr) {
 			} else callb(null);
 		}
 		this.write = function(data) {
-			let wid;
-			let dataBuf = Buffer.from(data);
-			let paramBuf = Buffer.from(Uint32Array.from([bits,2,delay]).buffer);
-			let buf = Buffer.concat([paramBuf,dataBuf]);
-			// use WVAS to add serial data to the next waveform
-			let callback;
-			request(WVAS, tx, baud, buf.length, callback, buf);
-			_tx.waveCreate((id)=> {
-				wid = id;
-				//for now just wait not busy.  Todo: sync it
-				_tx.waveNotBusy( ()=> {
-					_tx.waveSendOnce(wid);
-					// clean up, recycle wids
-					if (typeof current_wid == 'number') {
-						_tx.waveDelete(current_wid);
-					}
-					current_wid = wid;
+			if (isOpen) {
+			_tx.waveAddSerial(baud, bits, delay, data, () => {
+				_tx.waveCreate((err,id)=> {
+debugger;			next_wid = id;
+					//for now just wait not busy.  Todo: sync it
+					_tx.waveNotBusy( ()=> {
+debugger;				_tx.waveSendOnce(next_wid);
+						// clean up, recycle wids
+						if (current_wid !== null) {
+							_tx.waveDelete(current_wid);
+						}
+						current_wid = next_wid;
+					});
 				});
 			});
+			}
 		}
 		this.close = function(callback) {
+			if (isOpen) {
+				_rx.serialReadClose( () => {
+					isOpen = false;
+					if (callback) callback();
+				});
+			} else if (callback) callback();
+		}
+		this.end = function(callback) {
 			_rx.serialReadClose( () => {
-			_tx.modeSet('input', () => {
-			_dtr.modeSet('input',() => {
-				callback();
-		}); }); });
+			_tx.modeSet('input', () => { // end()
+			_dtr.modeSet('input',() => { // end()
+				_serialport = undefined; // ready for garbage collection??? 
+				if (typeof callback === 'function') {
+					callback();
+				}
+			}); }); });
 		}
 
 	}//serialport
