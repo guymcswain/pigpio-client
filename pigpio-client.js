@@ -479,18 +479,6 @@ that.gpio = function(gpio) {
 		this.waveBusy = function(callback) {
 			request(WVBSY,0,0,0,callback);
 		}
-/*
-		this.waveNotBusy = function(time, callback) {
-			let timer = time || 25;
-			let waitWaveBusy = (done)=> {
-				request(WVBSY,0,0,0, (err, busy)=> {
-					if (!busy) done();
-					else setTimeout( ()=>waitWaveBusy(done),timer);
-				});
-			}
-			waitWaveBusy(callback);
-		}
-*/
 		this.waveNotBusy = function(time, cb) {
 			let timer, callback;
 			
@@ -622,7 +610,10 @@ that.serialport = function(rx,tx,dtr) {
 		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
 			return undefined;
 		var _rx = new that.gpio(rx);
-		var _tx = new that.gpio(tx);
+		var _tx;
+		if (tx === rx) { // loopback mode
+			_tx = _rx;
+		} else _tx = new that.gpio(tx);
 		var _dtr = new that.gpio(dtr);
 		_rx.modeSet('input'); // need a pullup?
 		_tx.modeSet('output');
@@ -650,7 +641,7 @@ that.serialport = function(rx,tx,dtr) {
 						isOpen = true;
 						// pulse dtr pin to reset Arduino
 						_dtr.write(0, ()=> {
-							setTimeout( ()=> {_dtr.write(1)}, 100);
+							setTimeout( ()=> {_dtr.write(1)}, 10);
 						});
 						callback(null);
 					}
@@ -678,13 +669,13 @@ that.serialport = function(rx,tx,dtr) {
 	//in the internal buffer will be returned.
 				_rx.serialRead(count, (err,len,...bytes)=> {
 					if (err) {
-						console.log("Serialport rx error: "+err);
-						callb(null);
+						//console.log("Serialport rx error: "+err);
+						callb(err);
 					} else if (len===0) {
-						callb(null);
+						callb(null,null);
 					} else {
 						let buf = Buffer.from(bytes);
-						callb(buf);
+						callb(null,buf);
 					}
 				});
 			} else callb(null);
