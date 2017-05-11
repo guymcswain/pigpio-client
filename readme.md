@@ -100,15 +100,22 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 - waveChainTx will fail if widArray is odd length!, see fixme comment
 
 ###Todo
-- Add gpio.end()?
+- Implement error codes decoder.
 - How to keep request as a private method?
 - Simplify callback arguments to just err, res instead of err, res, ...len.  Res may be scalar or array.
 - Notifications socket: check for notification errors response (res[3])?  See pigpio python code.
 - test for callback queue underflow?
-- Command socket response handler shall only emit 'error' when the optional callback is not provided.
+- Use waveSendSync in serialport.write to improve performance.
+- Make serialport.read similar to readable.read api
+- Add true flow control and modem support to serialport.read
 
 ###Ideas
 - Waveforms should be accessible through a lock to gpio objects exclusive access during waveform creation/initialization, building or deletion.
 - gpio objects keep track of their wave ids and delete them when gpio.end().  Avoids global clear waves.
 - use gpio.waveTxAt to determine if another gpio wave is active (not in set of owned wave ids).
 - keep track of gpio in use/avaiable, prevent overlapping gpio objects.
+
+####Running pigpiod with permissions
+	$ sudo pigiod -s 1 # 1 microsecond sampling\
+			-f # disable local pipe interface (ie pigs)\
+			-n 10.0.0.13 # only allow host from my secure subnet

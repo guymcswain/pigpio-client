@@ -375,6 +375,7 @@ commandSocket.once('connect', ()=> {
 				if (typeof cb === 'function') cb();
 			} else ended = true;
 		});
+		//todo: change info.conn1, info.conn2 to false
 	}
 
 /*___________________________________________________________________________*/
