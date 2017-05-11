@@ -131,7 +131,7 @@ exports.pigpio = function(pi) {
 						extLen = 0;
 						if (p3[0] < 0) {
 							err = p3[0]; // param[3] contains error code (negative)
-							that.emit('error', new Error('pigio-client res:'+p3[0]+' cmd:'+cmd[0]));
+							
 						}
 				}
 			}
@@ -147,6 +147,10 @@ exports.pigpio = function(pi) {
 			// process the response callback
 			var callback = callbackQueue.shift(); // FIXME: test for queue underflow
 			if (typeof callback === 'function') callback(err,p3[0], ...res);
+			else {
+				if (err<0)
+					that.emit('error', new Error('pigio-client res:'+p3[0]+' cmd:'+cmd[0]));
+			}
 			// does response buffer contain another response (potentially)?
 			if (resBuf.length >= 16) responseHandler(); // recurse
 			// check requestQueue for more requests to send
