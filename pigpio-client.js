@@ -715,7 +715,7 @@ debugger;				_tx.waveSendOnce(next_wid);
 			_rx.serialReadClose( () => {
 			_tx.modeSet('input', () => { // end()
 			_dtr.modeSet('input',() => { // end()
-				_serialport = undefined; // ready for garbage collection??? 
+				//_serialport = undefined; // ready for garbage collection??? 
 				if (typeof callback === 'function') {
 					callback();
 				}
