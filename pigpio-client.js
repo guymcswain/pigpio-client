@@ -525,31 +525,36 @@ that.gpio = function(gpio) {
 			// ship it
 			request(WVAG,0,0,arrBuf.byteLength,callback,arrBuf);
 		}
-		const LOOP_START = 0xff, LOOP_DELAY = 0x2ff, LOOP_REPEAT = 0x1ff;
-		this.waveChainTx = function(widArray, options, callback) {
-			assert.equal(typeof options.delay, 'number',"delay not a number");
-			assert.equal(typeof options.repeat, 'number',"repeat not a number");
-			assert.equal(Array.isArray(widArray),true,"argument must be an array");
-
-			var arrBuf = new ArrayBuffer(widArray.length+10);
-			var header = new Uint16Array(arrBuf,0,1);
-			var wids = new Uint8Array(arrBuf,2,widArray.length);
-		//fixme: tail will fail if widArray is odd length!	
-			//var tail = new Uint16Array(arrBuf, 2+widArray.length, 4);
-			var tail = new Uint8Array(arrBuf, 2+widArray.length, 8);
-			
-			// build view of packet to send
-			header[0] = LOOP_START;
-			for (let i=0; i<widArray.length; i++)
-				wids[i] = widArray[i];
-			tail[0] = LOOP_DELAY&0xff;
-			tail[1] = LOOP_DELAY>>8;
-			tail[2] = options.delay&0xff;
-			tail[3] = options.delay>>8;
-			tail[4] = LOOP_REPEAT&0xff;
-			tail[5] = LOOP_REPEAT>>8;
-			tail[6] = options.repeat&0xff;
-			tail[7] = options.repeat>>8;
+		
+		this.waveChainTx = function(paramArray, callback) {
+			// Todo: assert paramArray elements are single property objects
+			var chain = [];
+			paramArray.forEach( (param) => {
+				let temp;
+				if (param.hasOwnProperty("loop")) {
+					temp = chain.concat(255,0);
+				}
+				else if (param.hasOwnProperty("repeat")) {
+					assert.equal(param.repeat<=0xffff, true, "param must be <= 65535");
+					temp = chain.concat(255,1, param.repeat&0xff, param.repeat>>8);
+				}
+				else if (param.hasOwnProperty("delay")) {
+					assert.equal(param.delay<=0xffff, true, "param must be <= 65535");
+					temp = chain.concat(255,2, param.delay&0xff, param.delay>>8);
+				}
+				else if (param.hasOwnProperty("waves")) {
+					param.waves.forEach( (wid) => {
+						assert.equal(wid<=250, true, "wid must be <= 250");
+					});
+					temp = chain.concat(param.waves);
+				}
+				chain = temp;
+				temp = [];
+			});
+	//console.log( chain );
+			var arrBuf = new ArrayBuffer(chain.length);
+			var buffer = new Uint8Array(arrBuf);
+			for (let i=0; i<chain.length; i++) buffer[i] = chain[i];
 			request(WVCHA,0,0,arrBuf.byteLength,callback,arrBuf);
 		}
 		
@@ -689,10 +694,10 @@ that.serialport = function(rx,tx,dtr) {
 			if (isOpen) {
 			_tx.waveAddSerial(baud, bits, delay, data, () => {
 				_tx.waveCreate((err,id)=> {
-debugger;			next_wid = id;
+					next_wid = id;
 					//for now just wait not busy.  Todo: sync it
 					_tx.waveNotBusy( ()=> {
-debugger;				_tx.waveSendOnce(next_wid);
+						_tx.waveSendOnce(next_wid);
 						// clean up, recycle wids
 						if (current_wid !== null) {
 							_tx.waveDelete(current_wid);
