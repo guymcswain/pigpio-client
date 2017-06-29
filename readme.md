@@ -98,11 +98,9 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
 ### Bugs
-- waveChainTx will fail if widArray is odd length!, see fixme comment
 
 ### Todo
-- Implement error codes decoder.
-- How to keep request as a private method?
+- Implement pigpiod error codes decoder.
 - Simplify callback arguments to just err, res instead of err, res, ...len.  Res may be scalar or array.
 - Notifications socket: check for notification errors response (res[3])?  See pigpio python code.
 - test for callback queue underflow?
