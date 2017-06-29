@@ -1,9 +1,10 @@
-# PIGPIO Client
+# pigpio-client
 Pigpio client uses the pigpiod socket interface running on a remote or localhost
 Raspberry Pi to control its GPIO pins.  For the underlying detail of the pigpio 
 socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 
-###Usage
+### Usage
+```
 	const PigpioClient = require('pigpio-client');
 	const myPi = new PigpioClient.pigpio({host:'localhost', port:8888});  
 	const myPin = myPi.gpio(25);
@@ -21,7 +22,7 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 	myPi.on('error', (err)=> {
 		console.log(err.message); // or err.stack
 	});
-
+```
 Most pigpio-client methods are asynchronous and accept an optional callback function.  Asynchronous
 methods called without providing a callback function will emit 'error' if a pigpio exeception is raised.
 The application must supply an 'error' event handler in such cases.	Arguments to callback are: *(err, res, ...ext)*.
@@ -31,7 +32,7 @@ to-back without a callback (see usage example above).  Network socket requests c
 pipelining property set to true in the constructor, but now the application must assure responses are received
 in the corret order - usually done by chaining callbacks.
 
-###Constructor
+### Constructor
 **pigpioClient({host: '192.168.1.12', port: 8765, pipelining: true})**:
 
 Constructs a pigpio 
@@ -41,7 +42,7 @@ returns pigpio client object.
 
 
 
-##Methods
+## Methods
 **pi.getInfo()**  Returns useful information about rpi hardware and pigpiod.  
 **pi.getCurrentTick(cb)**  
 **pi.readBank1(cb)**  
@@ -53,7 +54,7 @@ received from both sockets.
 **gpio.modeSet(mode, cb)**  Set mode of gpio to 'in[put]' or 'out[put]'.  
 **gpio.modeGet(cb)**  Returns the mode of gpio as argument to callback.  
 **gpio.pullUpDown(pud, cb)**  Sets the pullup or pulldown resistor for gpio.  
-**gpio.read(cb))**  Returns the gpio level as argument to callback.  
+**gpio.read(cb)**  Returns the gpio level as argument to callback.  
 **gpio.write(level, cb)**  Set the gpio level.  
 **gpio.analogWrite(dutyCycle, cb)**  
 
@@ -70,7 +71,7 @@ received from both sockets.
 **gpio.waveTxAt(cb)**  Return currently active wave id, no wave being transmitted (9999) or wave not found (9998).  
 **gpio.waveDelete(wid, cb)**  Delete the wave id.
 
-###Notifications
+### Notifications
 The pigpio-client object automatically opens a second connection to pigpiod for notifications on gpio pins.
 This is done by issuing the 'NOIB' (notification open in-band) command to the command socket.
 
@@ -81,25 +82,25 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 **gpio.notify(callback)** Registers a notification callback for this gpio.  Callback is called whenever the gpio state changes.  Callback arguments are *level* and *tick* where *tick* represents the system's time since boot.  
 **gpio.endNotify()**  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.  Useful for stream objects that wrap the notifier callback.  
 
-###Bit\_Bang\_Serial Methods  
+### Bit\_Bang\_Serial Methods  
 **gpio.serialReadOpen(baudRate, dataBits, cb)**   
 **gpio.serialRead(count, cb)**  Callback returns (err,len,array)  
 **gpio.serialReadClose(cb)**  
 **gpio.serialReadInvert(mode, cb)**  Mode is 'invert' || 'normal'.  
 **waveAddSerial(baud,bits,delay,data,cb)**  
 
-###Serialport
-**pi.serialport(rx,,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  
+### Serialport
+**pi.serialport(rx,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  
 **serialport.open(baudrate,databits,cb)**  Callback arg is null if sucessful, error message otherwise.  
 **serialport.read(cb)**  Callback arg is null if no data available, else buffer object.  
 **serialport.write(data)**  Data is string or buffer or array.  
 **serialport.close(cb)**  Close serialport.  
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
-###Bugs
+### Bugs
 - waveChainTx will fail if widArray is odd length!, see fixme comment
 
-###Todo
+### Todo
 - Implement error codes decoder.
 - How to keep request as a private method?
 - Simplify callback arguments to just err, res instead of err, res, ...len.  Res may be scalar or array.
@@ -109,13 +110,15 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 - Make serialport.read similar to readable.read api
 - Add true flow control and modem support to serialport.read
 
-###Ideas
+### Ideas
 - Waveforms should be accessible through a lock to gpio objects exclusive access during waveform creation/initialization, building or deletion.
 - gpio objects keep track of their wave ids and delete them when gpio.end().  Avoids global clear waves.
 - use gpio.waveTxAt to determine if another gpio wave is active (not in set of owned wave ids).
 - keep track of gpio in use/avaiable, prevent overlapping gpio objects.
 
-####Running pigpiod with permissions
+#### Running pigpiod with permissions
+```
 	$ sudo pigiod -s 1 # 1 microsecond sampling\
 			-f # disable local pipe interface (ie pigs)\
 			-n 10.0.0.13 # only allow host from my secure subnet
+```
