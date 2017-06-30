@@ -1,4 +1,4 @@
-p# pigpio-client
+# pigpio-client
 Pigpio client uses the pigpiod socket interface running on a remote or localhost
 Raspberry Pi to control its GPIO pins.  For the underlying detail of the pigpio 
 socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
