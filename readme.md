@@ -6,56 +6,54 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 ### Usage
 ```
 	const PigpioClient = require('pigpio-client');
-	const myPi = new PigpioClient.pigpio({host:'localhost', port:8888});  
-	const myPin = myPi.gpio(25);
-	myPin.modeset('input'); // no callback
-	var pinLevel;
-	myPin.read((err,val)=>{ // read callback executes after modeSet
-		if (err) errorHandler(err);
-		else pinLevel = val;
-	});
-	// get notifications on GPIO25
-	myPin.notify((buf)=> {
-		//buf is Buffer object containing 16-bit sequence, 16-bit flags, 32-bit tick, 32-bit level
-	});
-	// you should monitor for errors
-	myPi.on('error', (err)=> {
-		console.log(err.message); // or err.stack
-	});
+	const pi = new PigpioClient.pigpio({host:'localhost', port:8888});  
+	pi.on('connected', () => {
+		const myPin = pi.gpio(25);
+		myPin.modeSet('input'); // no callback
+		var pinLevel;
+		myPin.read((err,val)=>{ // read callback executes after modeSet
+			if (err) errorHandler(err);
+			else pinLevel = val;
+		});
+		// get notifications on GPIO25
+		myPin.notify((level, tick)=> {
+			//level is the pin's level, tick is 32-bit time in microseconds
+		});
+		// you should monitor for errors
+		pi.on('error', (err)=> {
+			console.log(err.message); // or err.stack
+		});
+	}); //Pi.on 'connected'
 ```
 Most pigpio-client methods are asynchronous and accept an optional callback function.  Asynchronous
 methods called without providing a callback function will emit 'error' if a pigpio exeception is raised.
-The application must supply an 'error' event handler in such cases.	Arguments to callback are: *(err, res, ...ext)*.
+The application must supply an 'error' event handler in such cases.  Arguments to callback are: *(err, res, ...ext)*.
 
-By default, network request and response to/from pigiod are ordered allowing pigpio commands to be sent back-
-to-back without a callback (see usage example above).  Network socket requests can be pipelined, with the
-pipelining property set to true in the constructor, but now the application must assure responses are received
-in the corret order - usually done by chaining callbacks.
+By default, network request and response to/from pigpiod are ordered allowing pigpio-client commands to be sent back-to-back without a callback (see usage example above).  Network socket requests can be pipelined, with the pipelining property set to true in the constructor, but now the application must assure responses are received in the corret order - usually done by chaining callbacks.
 
 ### Constructor
-**pigpioClient({host: '192.168.1.12', port: 8765, pipelining: true})**:
+**pigpioClient.pigpio({host: '192.168.1.12', port: 8765, pipelining: true})**:
 
-Constructs a pigpio 
-Client connected to 192.168.1.12:8765 with pipelining enabled.
-Defaults are host=localhost, port=8888, pipelining=false.  On success,
-returns pigpio client object.
+Constructs a pigpio client connected to 192.168.1.12:8765 with pipelining enabled.
+Defaults are host=localhost, port=8888, pipelining=false.  On success, returns pigpio client object.
 
-
+## Events
+**'connected'**  Emitted after both command and notification sockets recieve 'connect' from pigpiod.
+**'error'**  Emitted on network socket errors, gpio.notify errors or when pigpio command requested receives an error response and no callback was attached.
 
 ## Methods
 **pi.getInfo()**  Returns useful information about rpi hardware and pigpiod.  
 **pi.getCurrentTick(cb)**  
 **pi.readBank1(cb)**  
-**pi.end(cb)**	Ends communications on command and notifications socket.  Callback issued after 'close' event is
-received from both sockets.  
+**pi.end(cb)**	Ends communications on command and notifications socket.  Callback issued after 'close' event is received from both sockets.  
 **pi.destroy()**  Runs socket.destroy() on both network sockets.  Todo: other cleanup.  
 **pi.gpio(gpio_pin)** Construct a gpio object referring to gpio_pin.
 
 **gpio.modeSet(mode, cb)**  Set mode of gpio to 'in[put]' or 'out[put]'.  
 **gpio.modeGet(cb)**  Returns the mode of gpio as argument to callback.  
-**gpio.pullUpDown(pud, cb)**  Sets the pullup or pulldown resistor for gpio.  
-**gpio.read(cb)**  Returns the gpio level as argument to callback.  
-**gpio.write(level, cb)**  Set the gpio level.  
+**gpio.pullUpDown(pud, cb)**  Sets the pullup (pud=2) or pulldown (pud=1) resistor for gpio.  Pud=0 off.
+**gpio.read(cb)**  Returns the gpio pin level as argument to callback.  
+**gpio.write(level, cb)**  Set the gpio pin to level.  
 **gpio.analogWrite(dutyCycle, cb)**  
 
 **gpio.waveClear(cb)** clear all waveforms (wave IDs are all reset).  
@@ -116,7 +114,7 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 
 #### Running pigpiod with permissions
 ```
-	$ sudo pigiod -s 1 # 1 microsecond sampling\
+	$ sudo pigpiod -s 1 # 1 microsecond sampling\
 			-f # disable local pipe interface (ie pigs)\
 			-n 10.0.0.13 # only allow host from my secure subnet
 ```
