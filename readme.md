@@ -1,4 +1,4 @@
-# pigpio-client
+p# pigpio-client
 Pigpio client uses the pigpiod socket interface running on a remote or localhost
 Raspberry Pi to control its GPIO pins.  For the underlying detail of the pigpio 
 socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
@@ -25,9 +25,9 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 ```
 Most pigpio-client methods are asynchronous and accept an optional callback function.  Asynchronous
 methods called without providing a callback function will emit 'error' if a pigpio exeception is raised.
-The application must supply an 'error' event handler in such cases.	Arguments to callback are: *(err, res, ...ext)*.
+The application must supply an 'error' event handler in such cases.  Arguments to callback are: *(err, res, ...ext)*.
 
-By default, network request and response to/from pigiod are ordered allowing pigpio commands to be sent back-
+By default, network request and response to/from pigpiod are ordered allowing pigpio-client commands to be sent back-
 to-back without a callback (see usage example above).  Network socket requests can be pipelined, with the
 pipelining property set to true in the constructor, but now the application must assure responses are received
 in the corret order - usually done by chaining callbacks.
@@ -116,7 +116,7 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 
 #### Running pigpiod with permissions
 ```
-	$ sudo pigiod -s 1 # 1 microsecond sampling\
+	$ sudo pigpiod -s 1 # 1 microsecond sampling\
 			-f # disable local pipe interface (ie pigs)\
 			-n 10.0.0.13 # only allow host from my secure subnet
 ```
