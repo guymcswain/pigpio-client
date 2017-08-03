@@ -77,13 +77,16 @@ exports.pigpio = function(pi) {
 		that.emit('error', new Error('pigpio-client command socket:'+JSON.stringify(err)));
 	});
 	commandSocket.on('end', function() {
-		console.log('pigpio end received');
+		if (process.env.DEBUG) {
+			console.log('pigpio end received');
+		}
 	});
 	commandSocket.on('close', function() {
-		if (info.conn1) {
-			if (process.env.DEBUG)
+		if (process.env.DEBUG) {
+			if (info.conn1)
 				console.log('pigpio connection closed');
-		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+			else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		}
 	});
 
 	var resBuf = Buffer.allocUnsafe(0);  // see responseHandler()
@@ -237,7 +240,6 @@ commandSocket.once('connect', ()=> {
 				// connect listener that processes notification chunks
 				notificationSocket.on('data', function (chunk) {
 					// monitors all gpio bits and issues callback for all registered notifiers.
-					//console.log('got chunk'+JSON.stringify(chunk));
 					var buf = Buffer.concat([chunklet,chunk]);
 					let remainder = buf.length%12;
 					
@@ -267,13 +269,17 @@ commandSocket.once('connect', ()=> {
 		that.emit('error', new Error('pigpio-client notification socket:'+JSON.stringify(err)));
 	});
 	notificationSocket.on('end', function() {
-		console.log('pigpio notification end received');
+		if (process.env.DEBUG) {
+			console.log('pigpio notification end received');
+		}
 	});
 	notificationSocket.on('close', function() {
-		if (info.conn2) {
-			if (process.env.DEBUG)
+		if (process.env.DEBUG) {
+			if (info.conn2)
 				console.log('pigpio notification closed');
-		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+			else
+				console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		}
 	});
 });
 	
@@ -289,6 +295,11 @@ commandSocket.once('connect', ()=> {
 	var notifiers = new Set();
 	var monitorBits = 0;
 	that.startNotifications = function(bits, cb) {
+		if (notifiers.size = MAX_NOTIFICATIONS) {
+			that.emit('error', new Error('Notification limit reached, cannot add this notifier'));
+			return null;
+		}
+
 		// Registers callbacks for this gpio
 		var nob = {
 			id: nID++,
@@ -296,8 +307,7 @@ commandSocket.once('connect', ()=> {
 			bits: +bits,
 		};
 		notifiers.add(nob);
-		if (notifiers.size > MAX_NOTIFICATIONS)
-			console.log('Warning: The notification maximum has been exceeded');
+		
 		// Update monitor with bits
 		monitorBits |= bits;
 		// send 'notifiy begin' command
@@ -342,10 +352,6 @@ commandSocket.once('connect', ()=> {
 \tpipelining : ${info.pipelining}
 \tcommand socket connected : ${info.conn1}
 \tnotifications socket connected : ${info.conn2}`);
-	}
-	that.connected = function() { // for legacy
-		console.log("connected method is deprecated, use 'connected' event");
-		return info.conn1;
 	}
 	that.getCurrentTick = function(cb) {
 		that.request(TICK,0,0,0,cb);
@@ -445,7 +451,7 @@ that.gpio = function(gpio) {
 		this.notify = function (callback) {
 			// only allow one notifier per gpio object
 			if (notifierID !== null) {
-				console.log('Warning: notifier already registered, ignored');
+				that.emit('error', new Error('Notifier already registered for this gpio.'));
 				return;
 			}
 			// get the current levels to compare against for changes
@@ -551,7 +557,7 @@ that.gpio = function(gpio) {
 				chain = temp;
 				temp = [];
 			});
-	//console.log( chain );
+
 			var arrBuf = new ArrayBuffer(chain.length);
 			var buffer = new Uint8Array(arrBuf);
 			for (let i=0; i<chain.length; i++) buffer[i] = chain[i];
@@ -679,7 +685,6 @@ that.serialport = function(rx,tx,dtr) {
 	//in the internal buffer will be returned.
 				_rx.serialRead(count, (err,len,...bytes)=> {
 					if (err) {
-						//console.log("Serialport rx error: "+err);
 						callb(err);
 					} else if (len===0) {
 						callb(null,null);
