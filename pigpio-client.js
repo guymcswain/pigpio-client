@@ -391,19 +391,14 @@ that.gpio = function(gpio) {
 		
 		var modeSet = function(gpio, mode, callback) {
 			if (typeof gpio !== 'number' || typeof mode !== 'string') {
-				throw {
-					name:'TypeError',
-					message:'pigpio.modeSet argument types are number and string'
-				}
-			} if ( !that.isUserGpio(gpio) ) {
-				throw {
-					name:'PigpioError',
-					message:'pigpio.modeSet gpio argument is not user gpio'
-				}
+				throw new Error('TypeError: pigpio.modeSet argument types are number and string');
+			}
+			if ( !that.isUserGpio(gpio) ) {
+				throw new Error('PigpioError: pigpio.modeSet gpio argument is not user gpio');
 			}
 			var m = /^outp?u?t?/.test(mode)? 1 : /^inp?u?t?/.test(mode)? 0 : undefined;
 			if (m === undefined) {
-				throw "pigpio.modeSet error: invalid mode string";
+				throw new Error('pigpio.modeSet: invalid mode string');
 				return;
 			}
 			request(MODES,gpio,m,0,callback);
@@ -411,15 +406,10 @@ that.gpio = function(gpio) {
 		
 		var pullUpDown = function(gpio, pud, callback) {
 			if (typeof gpio !== 'number' || typeof pud !== 'number') {
-				throw {
-					name:'TypeError',
-					message:'pigpio.pullUpDown argument is not a number'
-				}
-			} if ( !that.isUserGpio(gpio) ) {
-				throw {
-					name:'PigpioError',
-					message:'pigpio.pullUpDown gpio argument is not user gpio'
-				}
+				throw new Error('TypeError: pigpio.pullUpDown argument is not a number');
+			}
+			if ( !that.isUserGpio(gpio) ) {
+				throw new Error('PigpioError: pigpio.pullUpDown gpio argument is not user gpio');
 			}
 			// Assume pigpio library handles range error on pud argument!
 			request(PUD,gpio,pud,0,callback);
@@ -433,7 +423,7 @@ that.gpio = function(gpio) {
 			if ( (+level>=0) && (+level<=1) ) {
 				request(WRITE,gpio,+level,0,callback);
 			}
-			else throw "pigpio.write error: bad gpio or level";
+			else throw new Error('pigpio.write error: bad gpio or level');
 		}
 		this.read = function(callback) {
 			request(READ,gpio,0,0,callback);
