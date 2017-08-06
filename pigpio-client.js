@@ -222,6 +222,7 @@ exports.pigpio = function(pi) {
 	var handle;
 	var notificationSocket;
 	var chunklet = Buffer.allocUnsafe(0); //notify chunk fragments
+	var oldLevels;
 commandSocket.once('connect', ()=> {
 	notificationSocket = net.createConnection(info.port, info.host, ()=> {
 		info.conn2 = true;
@@ -230,6 +231,7 @@ commandSocket.once('connect', ()=> {
 		console.log('notifier socket connected on rpi host '+info.host);
 		let noib = Buffer.from(new Uint32Array([NOIB,0,0,0]).buffer);
 		notificationSocket.write(noib, ()=>{
+			
 			// connect listener once to get handle from NOIB request
 			notificationSocket.once('data', (resBuf)=> {
 				const res = new Uint32Array(resBuf);
@@ -247,18 +249,18 @@ commandSocket.once('connect', ()=> {
 						let seqno = buf.readUInt16LE(i+0),
 							flags = buf.readUInt16LE(i+2),
 							tick = buf.readUInt32LE(i+4),
-							level = buf.readUInt32LE(i+8);
-						//if (flags === 0)
-							for (let nob of notifiers.keys())
-								nob.func(level, tick);
+							levels = buf.readUInt32LE(i+8);
+							oldLevels = (typeof oldLevels === 'undefined')? levels : oldLevels;
+							let changes = oldLevels ^ levels;
+							oldLevels = levels;
+							for (let nob of notifiers.keys()) {
+								if (nob.bits & changes) {
+									nob.func(levels, tick);
+								}
+							}
 					}
 					//save the chunk remainder
 					chunklet = buf.slice(buf.length-remainder);
-/*					// debug
-					if (remainder) {
-						console.log('got remainder chunklet: '+remainder);	
-					}
-*/
 				});
 			});
 		});
@@ -295,7 +297,7 @@ commandSocket.once('connect', ()=> {
 	var notifiers = new Set();
 	var monitorBits = 0;
 	that.startNotifications = function(bits, cb) {
-		if (notifiers.size = MAX_NOTIFICATIONS) {
+		if (notifiers.size === MAX_NOTIFICATIONS) {
 			that.emit('error', new Error('Notification limit reached, cannot add this notifier'));
 			return null;
 		}
@@ -444,24 +446,16 @@ that.gpio = function(gpio) {
 				that.emit('error', new Error('Notifier already registered for this gpio.'));
 				return;
 			}
-			// get the current levels to compare against for changes
-			that.readBank1((levels)=>{
-				let oldLevels = levels;
-				// now detect if gpio level has changed
-				let gpioBitValue = 1<<gpio;
-				notifierID = that.startNotifications(gpioBitValue,(levels, tick)=> {
-//Todo: janky code here, you fix it Mr Awesome!
+			
+			let gpioBitValue = 1<<gpio;
+			notifierID = that.startNotifications(gpioBitValue, (levels, tick)=> {
+				
+				// When notifications are ended, last callback has null arguments
 				if (levels===null) {
-						callback(null,null);
-						return;
-					}
-					let changes = oldLevels ^ levels;
-					oldLevels = levels;
-					if (gpioBitValue & changes) {
-						let level = (gpioBitValue&levels)>>gpio;
-						callback(level,tick);
-					}
-				});
+					return callback(null,null);;
+				}
+				let level = (gpioBitValue&levels)>>gpio;
+				callback(level,tick);
 			});
 			
 		}
