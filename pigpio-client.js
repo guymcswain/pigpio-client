@@ -326,16 +326,17 @@ commandSocket.once('connect', ()=> {
 	// Caution:  This will pause **all** notifications!
 		request(NP, handle, 0, 0, cb);
 	}
-	that.stopNotifications = function(id) {
+	that.stopNotifications = function(id, cb) {
 		// Clear monitored bits and unregister callback
 		for (let nob of notifiers.keys())
 			if (nob.id === id) {
 				monitorBits &= ~nob.bits; // clear gpio bit in monitorBits
 				// Stop the notifications on pigpio hardware
-				request(NB, handle, monitorBits, 0, ()=>{
-					console.log('last call for notifier id'+nob.id);
-					nob.func(null,null); // last callback with null arguments
-					notifiers.delete(nob); // remove this notifier object
+				request(NB, handle, monitorBits, 0, (err, res)=>{
+					// last callback with null arguments
+					nob.func(null,null);
+					notifiers.delete(nob);
+					cb(err, res);
 				});
 			}
 	}
@@ -463,9 +464,13 @@ that.gpio = function(gpio) {
 			});
 			
 		}
-		this.endNotify = function () {
-			if (notifierID !== null) that.stopNotifications(notifierID);
-			notifierID = null;
+		this.endNotify = function (cb) {
+			if (notifierID !== null) {
+				that.stopNotifications(notifierID, (err, res) =>{
+					notifierID = null;
+					cb(err, res);
+				});
+			}
 		}
 
 	// Waveform generation methods
