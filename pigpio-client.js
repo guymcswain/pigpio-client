@@ -232,35 +232,39 @@ commandSocket.once('connect', ()=> {
 		let noib = Buffer.from(new Uint32Array([NOIB,0,0,0]).buffer);
 		notificationSocket.write(noib, ()=>{
 			
-			// connect listener once to get handle from NOIB request
+			// listener once to get handle from NOIB request
 			notificationSocket.once('data', (resBuf)=> {
 				const res = new Uint32Array(resBuf);
 				handle = res[3];
 				if (process.env.DEBUG)
 				console.log('opened notification socket with handle= '+handle);
 				
-				// connect listener that processes notification chunks
+				// listener that monitors all gpio bits
 				notificationSocket.on('data', function (chunk) {
-					// monitors all gpio bits and issues callback for all registered notifiers.
 					var buf = Buffer.concat([chunklet,chunk]);
 					let remainder = buf.length%12;
+					chunklet = buf.slice(-remainder);
 					
-					for (let i=0; i<buf.length-remainder; i+=12) {
-						let seqno = buf.readUInt16LE(i+0),
-							flags = buf.readUInt16LE(i+2),
-							tick = buf.readUInt32LE(i+4),
-							levels = buf.readUInt32LE(i+8);
-							oldLevels = (typeof oldLevels === 'undefined')? levels : oldLevels;
-							let changes = oldLevels ^ levels;
-							oldLevels = levels;
-							for (let nob of notifiers.keys()) {
-								if (nob.bits & changes) {
-									nob.func(levels, tick);
+					// skip if buf is a fragment
+					if (buf.length/12 > 0) {
+						
+						// process notifications, issue callbacks to registerd notifier if bits have changed
+						for (let i=0; i<buf.length-remainder; i+=12) {
+							let seqno = buf.readUInt16LE(i+0),
+								flags = buf.readUInt16LE(i+2),
+								tick = buf.readUInt32LE(i+4),
+								levels = buf.readUInt32LE(i+8);
+								oldLevels = (typeof oldLevels === 'undefined')? levels : oldLevels;
+								let changes = oldLevels ^ levels;
+								oldLevels = levels;
+								for (let nob of notifiers.keys()) {
+									if (nob.bits & changes) {
+										nob.func(levels, tick);
+									}
 								}
-							}
+						}
 					}
-					//save the chunk remainder
-					chunklet = buf.slice(buf.length-remainder);
+					
 				});
 			});
 		});
