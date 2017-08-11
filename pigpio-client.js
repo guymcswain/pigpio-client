@@ -67,7 +67,9 @@ exports.pigpio = function(pi) {
 					info.userGpioMask = 0xffffffc;
 				}
 				info.conn1 = true;
-				//that.emit('connected'); see notificationSocket
+				if (info.conn2) {
+          that.emit('connected', info)
+        }
 			});
 		});
 		
@@ -220,15 +222,10 @@ exports.pigpio = function(pi) {
 	
 // Notifications socket = ToDo: check for notification errors response (res[3])
 	var handle;
-	var notificationSocket;
 	var chunklet = Buffer.allocUnsafe(0); //notify chunk fragments
 	var oldLevels;
-commandSocket.once('connect', ()=> {
-	notificationSocket = net.createConnection(info.port, info.host, ()=> {
-		info.conn2 = true;
-		that.emit('connected');
-		if (process.env.DEBUG)
-		console.log('notifier socket connected on rpi host '+info.host);
+
+	var notificationSocket = net.createConnection(info.port, info.host, ()=> {
 		let noib = Buffer.from(new Uint32Array([NOIB,0,0,0]).buffer);
 		notificationSocket.write(noib, ()=>{
 			
@@ -238,7 +235,10 @@ commandSocket.once('connect', ()=> {
 				handle = res[3];
 				if (process.env.DEBUG)
 				console.log('opened notification socket with handle= '+handle);
-				
+				info.conn2 = true;
+        if (info.conn1) {
+          that.emit('connected', info)
+        }
 				// listener that monitors all gpio bits
 				notificationSocket.on('data', function (chunk) {
 					var buf = Buffer.concat([chunklet,chunk]);
@@ -287,7 +287,7 @@ commandSocket.once('connect', ()=> {
 				console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
 		}
 	});
-});
+
 	
 	/*** Public Methods ***/
 	
