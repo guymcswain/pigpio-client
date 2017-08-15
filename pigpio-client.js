@@ -85,9 +85,7 @@ exports.pigpio = function(pi) {
 	});
 	commandSocket.on('close', function() {
 		if (process.env.DEBUG) {
-			if (info.conn1)
-				console.log('pigpio connection closed');
-			else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+			console.log('pigpio command socket closed');
 		}
 	});
 
@@ -281,10 +279,7 @@ exports.pigpio = function(pi) {
 	});
 	notificationSocket.on('close', function() {
 		if (process.env.DEBUG) {
-			if (info.conn2)
-				console.log('pigpio notification closed');
-			else
-				console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+			console.log('pigpio notification socket closed');
 		}
 	});
 
@@ -375,20 +370,20 @@ exports.pigpio = function(pi) {
 		// return all gpio to input mode with pull-up/down?
 		// clear any waveforms?
 		// other resets?
-		let ended = false;
 		commandSocket.end();
 		notificationSocket.end();
 		commandSocket.on('close', () => {
-			if (ended) {
+			info.conn1 = false
+      if (!info.conn2) {
 				if (typeof cb === 'function') cb();
-			} else ended = true;
+			}
 		});
 		notificationSocket.on('close', ()=>{
-			if (ended) {
+			info.conn2 = false
+      if (!info.conn1) {
 				if (typeof cb === 'function') cb();
-			} else ended = true;
+			}
 		});
-		//todo: change info.conn1, info.conn2 to false
 	}
 
 /*___________________________________________________________________________*/
