@@ -82,12 +82,8 @@ Defaults are host=localhost, port=8888, pipelining=false.  On success, returns p
 The pigpio-client object automatically opens a second connection to pigpiod for notifications on gpio pins.
 This is done by issuing the 'NOIB' (notification open in-band) command to the command socket.
 
-**pi.startNotifications(bits, cb)**  
-**pi.pauseNotifications(cb)**  
-**pi.stopNotifications(id)**  
-
 **gpio.notify(callback)** Registers a notification callback for this gpio.  Callback is called whenever the gpio state changes.  Callback arguments are *level* and *tick* where *tick* represents the system's time since boot.  
-**gpio.endNotify()**  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.  Useful for stream objects that wrap the notifier callback.  
+**gpio.endNotify(cb)**  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.  Useful for stream objects that wrap the notifier callback.  
 
 ### Bit\_Bang\_Serial Methods  
 **gpio.serialReadOpen(baudRate, dataBits, cb)**   
