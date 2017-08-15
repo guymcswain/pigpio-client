@@ -609,7 +609,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 */
 that.serialport = function(rx,tx,dtr) {
 	var _serialport = function(rx, tx, dtr) {
-		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid;
+		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid, txBusy=false, charsInPigpioBuf=0;
 		// check gpio pins are valid and (todo) available
 		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
 			return undefined;
@@ -651,8 +651,8 @@ that.serialport = function(rx,tx,dtr) {
 					}
 				});
 				// initialize tx
-				//_tx.waveClear();
-				request(53,0,0,0);  // init new wave
+				_tx.waveClear();
+				//request(53,0,0,0);  // init new wave
 			} else {
 				isOpen = false;
 				callback("Error: invalid arguments");
@@ -662,7 +662,7 @@ that.serialport = function(rx,tx,dtr) {
 			let count, callb;
 			if (typeof size === 'function') {
 				callb = size;
-				count = 1;
+				count = 1200;
 			} else {
 				callb = cb;
 				count = size || 1; // must read at least a byte at a time
@@ -683,24 +683,53 @@ that.serialport = function(rx,tx,dtr) {
 				});
 			} else callb(null);
 		}
-		this.write = function(data) {
-			if (isOpen) {
-			_tx.waveAddSerial(baud, bits, delay, data, () => {
-				_tx.waveCreate((err,id)=> {
-					next_wid = id;
-					//for now just wait not busy.  Todo: sync it
-					_tx.waveNotBusy( ()=> {
-						_tx.waveSendOnce(next_wid);
-						// clean up, recycle wids
-						if (current_wid !== null) {
-							_tx.waveDelete(current_wid);
-						}
-						current_wid = next_wid;
-					});
-				});
-			});
-			}
+		
+    this.write = function(data) {
+      if (isOpen === false) {
+        return -1
+      }
+      if (data.length > (600 - charsInPigpioBuf)){
+        return null
+      }
+      _tx.waveAddSerial(baud, bits, delay, data, (err, res) => {
+        if (err) throw new Error('unexpected pigpio error'+err)
+        charsInPigpioBuf += data.length
+      })
+      delay += Math.ceil( ((data.length+1) * (bits+2) / baud) * 1000000 );
+      if (!txBusy) {
+        sendSerial();
+      }
+      
+      function sendSerial () {
+        txBusy = true;
+        let millis = Math.ceil(delay/1000);
+        _tx.waveCreate( (err, id) => {
+          if (err) throw new Error('unexpected pigpio error'+err);
+          next_wid = id;
+          charsInPigpioBuf = 0
+          _tx.waveSendOnce(next_wid, (err, res) => {
+            setTimeout( ()=> {
+              _tx.waveBusy( (err, res) => {
+                if (err) throw new Error('unexpected pigpio error'+err);
+                if (res===1) {
+                  console.log('busy! serialport timeout is too short!');
+                }
+              });
+              txBusy = false;
+              // clean up, recycle wids
+              if (current_wid !== null) {
+                _tx.waveDelete(current_wid);
+              }
+              current_wid = next_wid;
+              if (delay) sendSerial()
+            }, millis);
+          });
+        });
+        delay = 0;
+      }
+      return data.length
 		}
+    
 		this.close = function(callback) {
 			if (isOpen) {
 				_rx.serialReadClose( () => {

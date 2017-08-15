@@ -7,19 +7,28 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 ```
 	const PigpioClient = require('pigpio-client');
 	const pi = new PigpioClient.pigpio({host:'localhost', port:8888});  
-	pi.on('connected', () => {
-		const myPin = pi.gpio(25);
-		myPin.modeSet('input'); // no callback
-		var pinLevel;
-		myPin.read((err,val)=>{ // read callback executes after modeSet
+	pi.on('connected', (info) => {
+    
+    // display information on pigpiod and connection status
+    console.log(JSON.stringify(info,null,2))
+		
+    // configure GPIO25 as input pin and read its level
+    const myPin = pi.gpio(25);
+		myPin.modeSet('input');
+		
+    // the read is held in queue to run after modeSet response is returned guaranteeing in order execution
+    var pinLevel;
+    myPin.read( (err,val) => {
 			if (err) errorHandler(err);
 			else pinLevel = val;
 		});
-		// get notifications on GPIO25
+		
+    // get notifications on GPIO25
 		myPin.notify((level, tick)=> {
 			//level is the pin's level, tick is 32-bit time in microseconds
 		});
-		// you should monitor for errors
+		
+    // you should monitor for errors
 		pi.on('error', (err)=> {
 			console.log(err.message); // or err.stack
 		});
@@ -88,10 +97,11 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 **waveAddSerial(baud,bits,delay,data,cb)**  
 
 ### Serialport
-**pi.serialport(rx,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  
+**pi.serialport(rx,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  All waveforms are cleared.  
 **serialport.open(baudrate,databits,cb)**  Callback arg is null if sucessful, error message otherwise.  
 **serialport.read(cb)**  Callback arg is null if no data available, else buffer object.  
-**serialport.write(data)**  Data is string or buffer or array.  
+**serialport.write(data)**  Data is string or buffer or array.  Returns null if data cannot be written.  The write
+buffer size is 600 characters (8-bit data).  Double buffered so transmits while accepting more data.  
 **serialport.close(cb)**  Close serialport.  
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
