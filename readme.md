@@ -5,34 +5,34 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 
 ### Usage
 ```
-	const PigpioClient = require('pigpio-client');
-	const pi = new PigpioClient.pigpio({host:'localhost', port:8888});  
-	pi.on('connected', (info) => {
+  const PigpioClient = require('pigpio-client');
+  const pi = new PigpioClient.pigpio({host:'localhost', port:8888});  
+  pi.on('connected', (info) => {
     
     // display information on pigpiod and connection status
     console.log(JSON.stringify(info,null,2))
-		
+    
     // configure GPIO25 as input pin and read its level
     const myPin = pi.gpio(25);
-		myPin.modeSet('input');
-		
+    myPin.modeSet('input');
+    
     // the read is held in queue to run after modeSet response is returned guaranteeing in order execution
     var pinLevel;
     myPin.read( (err,val) => {
-			if (err) errorHandler(err);
-			else pinLevel = val;
-		});
-		
+      if (err) errorHandler(err);
+      else pinLevel = val;
+    });
+    
     // get notifications on GPIO25
-		myPin.notify((level, tick)=> {
-			//level is the pin's level, tick is 32-bit time in microseconds
-		});
-		
+    myPin.notify((level, tick)=> {
+      //level is the pin's level, tick is 32-bit time in microseconds
+    });
+    
     // you should monitor for errors
-		pi.on('error', (err)=> {
-			console.log(err.message); // or err.stack
-		});
-	}); //Pi.on 'connected'
+    pi.on('error', (err)=> {
+      console.log(err.message); // or err.stack
+    });
+  }); //Pi.on 'connected'
 ```
 Most pigpio-client methods are asynchronous and accept an optional callback function.  Asynchronous
 methods called without providing a callback function will emit 'error' if a pigpio exeception is raised.
@@ -57,7 +57,7 @@ Defaults are host=localhost, port=8888, pipelining=false.  On success, returns p
 **pi.getInfo()**  Returns useful information about rpi hardware and pigpiod.  
 **pi.getCurrentTick(cb)**  
 **pi.readBank1(cb)**  
-**pi.end(cb)**	Ends communications on command and notifications socket.  Callback issued after 'close' event is received from both sockets.  
+**pi.end(cb)**  Ends communications on command and notifications socket.  Callback issued after 'close' event is received from both sockets.  
 **pi.destroy()**  Runs socket.destroy() on both network sockets.  Todo: other cleanup.  
 **pi.gpio(gpio_pin)** Construct a gpio object referring to gpio_pin.
 
@@ -107,13 +107,13 @@ buffer size is 600 characters (8-bit data).  Double buffered so transmits while 
 ### Bugs
 https://github.com/guymcswain/pigpio-client/issues
 
-Please run the serial port test using npm test.  Set up your npm environment as follows:
-npm config set pigpio-client:host 'ip address of your rpi'
-npm config set pigpio-client:gpio 'unused gpio number'
+Please run the serial port test using npm test.  Set up your npm environment as follows:  
+npm config set pigpio-client:host 'ip address of your rpi'  
+npm config set pigpio-client:gpio 'unused gpio number'  
 
 #### Running pigpiod with permissions
 ```
-	$ sudo pigpiod -s 1 # 1 microsecond sampling\
-			-f # disable local pipe interface (ie pigs)\
-			-n 10.0.0.13 # only allow host from my secure subnet
+  $ sudo pigpiod -s 1 # 1 microsecond sampling\
+      -f # disable local pipe interface (ie pigs)\
+      -n 10.0.0.13 # only allow host from my secure subnet
 ```
