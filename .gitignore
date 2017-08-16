@@ -1,5 +1,6 @@
 # ignore test directory
-test/*
+#test/*
+
 # ignore readme.md derived files
 *.html
 readme.pdf

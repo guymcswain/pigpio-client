@@ -6,22 +6,33 @@ socket interface see http://abyz.co.uk/rpi/pigpio/sif.html
 ### Usage
 ```
 	const PigpioClient = require('pigpio-client');
-	const myPi = new PigpioClient.pigpio({host:'localhost', port:8888});  
-	const myPin = myPi.gpio(25);
-	myPin.modeset('input'); // no callback
-	var pinLevel;
-	myPin.read((err,val)=>{ // read callback executes after modeSet
-		if (err) errorHandler(err);
-		else pinLevel = val;
-	});
-	// get notifications on GPIO25
-	myPin.notify((buf)=> {
-		//buf is Buffer object containing 16-bit sequence, 16-bit flags, 32-bit tick, 32-bit level
-	});
-	// you should monitor for errors
-	myPi.on('error', (err)=> {
-		console.log(err.message); // or err.stack
-	});
+	const pi = new PigpioClient.pigpio({host:'localhost', port:8888});  
+	pi.on('connected', (info) => {
+    
+    // display information on pigpiod and connection status
+    console.log(JSON.stringify(info,null,2))
+		
+    // configure GPIO25 as input pin and read its level
+    const myPin = pi.gpio(25);
+		myPin.modeSet('input');
+		
+    // the read is held in queue to run after modeSet response is returned guaranteeing in order execution
+    var pinLevel;
+    myPin.read( (err,val) => {
+			if (err) errorHandler(err);
+			else pinLevel = val;
+		});
+		
+    // get notifications on GPIO25
+		myPin.notify((level, tick)=> {
+			//level is the pin's level, tick is 32-bit time in microseconds
+		});
+		
+    // you should monitor for errors
+		pi.on('error', (err)=> {
+			console.log(err.message); // or err.stack
+		});
+	}); //Pi.on 'connected'
 ```
 Most pigpio-client methods are asynchronous and accept an optional callback function.  Asynchronous
 methods called without providing a callback function will emit 'error' if a pigpio exeception is raised.
@@ -33,29 +44,28 @@ pipelining property set to true in the constructor, but now the application must
 in the corret order - usually done by chaining callbacks.
 
 ### Constructor
-**pigpioClient({host: '192.168.1.12', port: 8765, pipelining: true})**:
+**pigpioClient.pigpio({host: '192.168.1.12', port: 8765, pipelining: true})**:
 
-Constructs a pigpio 
-Client connected to 192.168.1.12:8765 with pipelining enabled.
-Defaults are host=localhost, port=8888, pipelining=false.  On success,
-returns pigpio client object.
+Constructs a pigpio client connected to 192.168.1.12:8765 with pipelining enabled.
+Defaults are host=localhost, port=8888, pipelining=false.  On success, returns pigpio client object.
 
-
+## Events
+**'connected'**  Emitted after both command and notification sockets recieve 'connect' from pigpiod.
+**'error'**  Emitted on network socket errors, gpio.notify errors or when pigpio command requested receives an error response and no callback was attached.
 
 ## Methods
 **pi.getInfo()**  Returns useful information about rpi hardware and pigpiod.  
 **pi.getCurrentTick(cb)**  
 **pi.readBank1(cb)**  
-**pi.end(cb)**	Ends communications on command and notifications socket.  Callback issued after 'close' event is
-received from both sockets.  
+**pi.end(cb)**	Ends communications on command and notifications socket.  Callback issued after 'close' event is received from both sockets.  
 **pi.destroy()**  Runs socket.destroy() on both network sockets.  Todo: other cleanup.  
 **pi.gpio(gpio_pin)** Construct a gpio object referring to gpio_pin.
 
 **gpio.modeSet(mode, cb)**  Set mode of gpio to 'in[put]' or 'out[put]'.  
 **gpio.modeGet(cb)**  Returns the mode of gpio as argument to callback.  
-**gpio.pullUpDown(pud, cb)**  Sets the pullup or pulldown resistor for gpio.  
-**gpio.read(cb)**  Returns the gpio level as argument to callback.  
-**gpio.write(level, cb)**  Set the gpio level.  
+**gpio.pullUpDown(pud, cb)**  Sets the pullup (pud=2) or pulldown (pud=1) resistor for gpio.  Pud=0 off.
+**gpio.read(cb)**  Returns the gpio pin level as argument to callback.  
+**gpio.write(level, cb)**  Set the gpio pin to level.  
 **gpio.analogWrite(dutyCycle, cb)**  
 
 **gpio.waveClear(cb)** clear all waveforms (wave IDs are all reset).  
@@ -75,12 +85,8 @@ received from both sockets.
 The pigpio-client object automatically opens a second connection to pigpiod for notifications on gpio pins.
 This is done by issuing the 'NOIB' (notification open in-band) command to the command socket.
 
-**pi.startNotifications(bits, cb)**  
-**pi.pauseNotifications(cb)**  
-**pi.stopNotifications(id)**  
-
 **gpio.notify(callback)** Registers a notification callback for this gpio.  Callback is called whenever the gpio state changes.  Callback arguments are *level* and *tick* where *tick* represents the system's time since boot.  
-**gpio.endNotify()**  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.  Useful for stream objects that wrap the notifier callback.  
+**gpio.endNotify(cb)**  Unregisters the notification on gpio. For convenience, a null *tick* value is sent.  Useful for stream objects that wrap the notifier callback.  
 
 ### Bit\_Bang\_Serial Methods  
 **gpio.serialReadOpen(baudRate, dataBits, cb)**   
@@ -90,29 +96,20 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 **waveAddSerial(baud,bits,delay,data,cb)**  
 
 ### Serialport
-**pi.serialport(rx,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  
+**pi.serialport(rx,tx,dtr)**  Construct serial port using gpio pins rx,tx,dtr.  All waveforms are cleared.  
 **serialport.open(baudrate,databits,cb)**  Callback arg is null if sucessful, error message otherwise.  
 **serialport.read(cb)**  Callback arg is null if no data available, else buffer object.  
-**serialport.write(data)**  Data is string or buffer or array.  
+**serialport.write(data)**  Data is string or buffer or array.  Returns null if data cannot be written.  The write
+buffer size is 600 characters (8-bit data).  Double buffered so transmits while accepting more data.  
 **serialport.close(cb)**  Close serialport.  
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
 ### Bugs
+https://github.com/guymcswain/pigpio-client/issues
 
-### Todo
-- Implement pigpiod error codes decoder.
-- Simplify callback arguments to just err, res instead of err, res, ...len.  Res may be scalar or array.
-- Notifications socket: check for notification errors response (res[3])?  See pigpio python code.
-- test for callback queue underflow?
-- Use waveSendSync in serialport.write to improve performance.
-- Make serialport.read similar to readable.read api
-- Add true flow control and modem support to serialport.read
-
-### Ideas
-- Waveforms should be accessible through a lock to gpio objects exclusive access during waveform creation/initialization, building or deletion.
-- gpio objects keep track of their wave ids and delete them when gpio.end().  Avoids global clear waves.
-- use gpio.waveTxAt to determine if another gpio wave is active (not in set of owned wave ids).
-- keep track of gpio in use/avaiable, prevent overlapping gpio objects.
+Please run the serial port test using npm test.  Set up your npm environment as follows:
+npm config set pigpio-client:host 'ip address of your rpi'
+npm config set pigpio-client:gpio 'unused gpio number'
 
 #### Running pigpiod with permissions
 ```

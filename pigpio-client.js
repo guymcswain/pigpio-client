@@ -24,8 +24,8 @@ var info = {
 	host: 'localhost',
 	port: 8888,
 	pipelining: false,
-	conn1: false,		// command socket connection status
-	conn2: false,		// notification socket connnection status
+	commandSocket: false,		// command socket connection status
+	notificationSocket: false,		// notification socket connnection status
 	pigpioVersion: '',
 	hwVersion: '',
 	hardware_type: 2,	// 26 pin plus 8 pin connectors (ie rpi model B)
@@ -66,8 +66,10 @@ exports.pigpio = function(pi) {
 					info.hardware_type = 3;
 					info.userGpioMask = 0xffffffc;
 				}
-				info.conn1 = true;
-				//that.emit('connected'); see notificationSocket
+				info.commandSocket = true;
+				if (info.notificationSocket) {
+          that.emit('connected', info)
+        }
 			});
 		});
 		
@@ -77,13 +79,14 @@ exports.pigpio = function(pi) {
 		that.emit('error', new Error('pigpio-client command socket:'+JSON.stringify(err)));
 	});
 	commandSocket.on('end', function() {
-		console.log('pigpio end received');
+		if (process.env.DEBUG) {
+			console.log('pigpio end received');
+		}
 	});
 	commandSocket.on('close', function() {
-		if (info.conn1) {
-			if (process.env.DEBUG)
-				console.log('pigpio connection closed');
-		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		if (process.env.DEBUG) {
+			console.log('pigpio command socket closed');
+		}
 	});
 
 	var resBuf = Buffer.allocUnsafe(0);  // see responseHandler()
@@ -217,46 +220,49 @@ exports.pigpio = function(pi) {
 	
 // Notifications socket = ToDo: check for notification errors response (res[3])
 	var handle;
-	var notificationSocket;
 	var chunklet = Buffer.allocUnsafe(0); //notify chunk fragments
-commandSocket.once('connect', ()=> {
-	notificationSocket = net.createConnection(info.port, info.host, ()=> {
-		info.conn2 = true;
-		that.emit('connected');
-		if (process.env.DEBUG)
-		console.log('notifier socket connected on rpi host '+info.host);
+	var oldLevels;
+
+	var notificationSocket = net.createConnection(info.port, info.host, ()=> {
 		let noib = Buffer.from(new Uint32Array([NOIB,0,0,0]).buffer);
 		notificationSocket.write(noib, ()=>{
-			// connect listener once to get handle from NOIB request
+			
+			// listener once to get handle from NOIB request
 			notificationSocket.once('data', (resBuf)=> {
 				const res = new Uint32Array(resBuf);
 				handle = res[3];
 				if (process.env.DEBUG)
 				console.log('opened notification socket with handle= '+handle);
-				
-				// connect listener that processes notification chunks
+				info.notificationSocket = true;
+        if (info.commandSocket) {
+          that.emit('connected', info)
+        }
+				// listener that monitors all gpio bits
 				notificationSocket.on('data', function (chunk) {
-					// monitors all gpio bits and issues callback for all registered notifiers.
-					//console.log('got chunk'+JSON.stringify(chunk));
 					var buf = Buffer.concat([chunklet,chunk]);
 					let remainder = buf.length%12;
+					chunklet = buf.slice(-remainder);
 					
-					for (let i=0; i<buf.length-remainder; i+=12) {
-						let seqno = buf.readUInt16LE(i+0),
-							flags = buf.readUInt16LE(i+2),
-							tick = buf.readUInt32LE(i+4),
-							level = buf.readUInt32LE(i+8);
-						//if (flags === 0)
-							for (let nob of notifiers.keys())
-								nob.func(level, tick);
+					// skip if buf is a fragment
+					if (buf.length/12 > 0) {
+						
+						// process notifications, issue callbacks to registerd notifier if bits have changed
+						for (let i=0; i<buf.length-remainder; i+=12) {
+							let seqno = buf.readUInt16LE(i+0),
+								flags = buf.readUInt16LE(i+2),
+								tick = buf.readUInt32LE(i+4),
+								levels = buf.readUInt32LE(i+8);
+								oldLevels = (typeof oldLevels === 'undefined')? levels : oldLevels;
+								let changes = oldLevels ^ levels;
+								oldLevels = levels;
+								for (let nob of notifiers.keys()) {
+									if (nob.bits & changes) {
+										nob.func(levels, tick);
+									}
+								}
+						}
 					}
-					//save the chunk remainder
-					chunklet = buf.slice(buf.length-remainder);
-/*					// debug
-					if (remainder) {
-						console.log('got remainder chunklet: '+remainder);	
-					}
-*/
+					
 				});
 			});
 		});
@@ -267,15 +273,16 @@ commandSocket.once('connect', ()=> {
 		that.emit('error', new Error('pigpio-client notification socket:'+JSON.stringify(err)));
 	});
 	notificationSocket.on('end', function() {
-		console.log('pigpio notification end received');
+		if (process.env.DEBUG) {
+			console.log('pigpio notification end received');
+		}
 	});
 	notificationSocket.on('close', function() {
-		if (info.conn2) {
-			if (process.env.DEBUG)
-				console.log('pigpio notification closed');
-		} else console.log('Couldn\'t connect to pigpio@'+info.host+':'+info.port);
+		if (process.env.DEBUG) {
+			console.log('pigpio notification socket closed');
+		}
 	});
-});
+
 	
 	/*** Public Methods ***/
 	
@@ -289,6 +296,11 @@ commandSocket.once('connect', ()=> {
 	var notifiers = new Set();
 	var monitorBits = 0;
 	that.startNotifications = function(bits, cb) {
+		if (notifiers.size === MAX_NOTIFICATIONS) {
+			that.emit('error', new Error('Notification limit reached, cannot add this notifier'));
+			return null;
+		}
+
 		// Registers callbacks for this gpio
 		var nob = {
 			id: nID++,
@@ -296,8 +308,7 @@ commandSocket.once('connect', ()=> {
 			bits: +bits,
 		};
 		notifiers.add(nob);
-		if (notifiers.size > MAX_NOTIFICATIONS)
-			console.log('Warning: The notification maximum has been exceeded');
+		
 		// Update monitor with bits
 		monitorBits |= bits;
 		// send 'notifiy begin' command
@@ -310,16 +321,17 @@ commandSocket.once('connect', ()=> {
 	// Caution:  This will pause **all** notifications!
 		request(NP, handle, 0, 0, cb);
 	}
-	that.stopNotifications = function(id) {
+	that.stopNotifications = function(id, cb) {
 		// Clear monitored bits and unregister callback
 		for (let nob of notifiers.keys())
 			if (nob.id === id) {
 				monitorBits &= ~nob.bits; // clear gpio bit in monitorBits
 				// Stop the notifications on pigpio hardware
-				request(NB, handle, monitorBits, 0, ()=>{
-					console.log('last call for notifier id'+nob.id);
-					nob.func(null,null); // last callback with null arguments
-					notifiers.delete(nob); // remove this notifier object
+				request(NB, handle, monitorBits, 0, (err, res)=>{
+					// last callback with null arguments
+					nob.func(null,null);
+					notifiers.delete(nob);
+					cb(err, res);
 				});
 			}
 	}
@@ -340,12 +352,8 @@ commandSocket.once('connect', ()=> {
 \tRPi HW type : ${info.hardware_type}
 \tUser GPIO : ${info.userGpioMask.toString(16)}
 \tpipelining : ${info.pipelining}
-\tcommand socket connected : ${info.conn1}
-\tnotifications socket connected : ${info.conn2}`);
-	}
-	that.connected = function() { // for legacy
-		console.log("connected method is deprecated, use 'connected' event");
-		return info.conn1;
+\tcommand socket connected : ${info.commandSocket}
+\tnotification socket connected : ${info.notificationSocket}`);
 	}
 	that.getCurrentTick = function(cb) {
 		that.request(TICK,0,0,0,cb);
@@ -362,20 +370,20 @@ commandSocket.once('connect', ()=> {
 		// return all gpio to input mode with pull-up/down?
 		// clear any waveforms?
 		// other resets?
-		let ended = false;
 		commandSocket.end();
 		notificationSocket.end();
 		commandSocket.on('close', () => {
-			if (ended) {
+			info.commandSocket = false
+      if (!info.notificationSocket) {
 				if (typeof cb === 'function') cb();
-			} else ended = true;
+			}
 		});
 		notificationSocket.on('close', ()=>{
-			if (ended) {
+			info.notificationSocket = false
+      if (!info.commandSocket) {
 				if (typeof cb === 'function') cb();
-			} else ended = true;
+			}
 		});
-		//todo: change info.conn1, info.conn2 to false
 	}
 
 /*___________________________________________________________________________*/
@@ -385,19 +393,14 @@ that.gpio = function(gpio) {
 		
 		var modeSet = function(gpio, mode, callback) {
 			if (typeof gpio !== 'number' || typeof mode !== 'string') {
-				throw {
-					name:'TypeError',
-					message:'pigpio.modeSet argument types are number and string'
-				}
-			} if ( !that.isUserGpio(gpio) ) {
-				throw {
-					name:'PigpioError',
-					message:'pigpio.modeSet gpio argument is not user gpio'
-				}
+				throw new Error('TypeError: pigpio.modeSet argument types are number and string');
+			}
+			if ( !that.isUserGpio(gpio) ) {
+				throw new Error('PigpioError: pigpio.modeSet gpio argument is not user gpio');
 			}
 			var m = /^outp?u?t?/.test(mode)? 1 : /^inp?u?t?/.test(mode)? 0 : undefined;
 			if (m === undefined) {
-				throw "pigpio.modeSet error: invalid mode string";
+				throw new Error('pigpio.modeSet: invalid mode string');
 				return;
 			}
 			request(MODES,gpio,m,0,callback);
@@ -405,15 +408,10 @@ that.gpio = function(gpio) {
 		
 		var pullUpDown = function(gpio, pud, callback) {
 			if (typeof gpio !== 'number' || typeof pud !== 'number') {
-				throw {
-					name:'TypeError',
-					message:'pigpio.pullUpDown argument is not a number'
-				}
-			} if ( !that.isUserGpio(gpio) ) {
-				throw {
-					name:'PigpioError',
-					message:'pigpio.pullUpDown gpio argument is not user gpio'
-				}
+				throw new Error('TypeError: pigpio.pullUpDown argument is not a number');
+			}
+			if ( !that.isUserGpio(gpio) ) {
+				throw new Error('PigpioError: pigpio.pullUpDown gpio argument is not user gpio');
 			}
 			// Assume pigpio library handles range error on pud argument!
 			request(PUD,gpio,pud,0,callback);
@@ -427,7 +425,7 @@ that.gpio = function(gpio) {
 			if ( (+level>=0) && (+level<=1) ) {
 				request(WRITE,gpio,+level,0,callback);
 			}
-			else throw "pigpio.write error: bad gpio or level";
+			else throw new Error('pigpio.write error: bad gpio or level');
 		}
 		this.read = function(callback) {
 			request(READ,gpio,0,0,callback);
@@ -445,33 +443,29 @@ that.gpio = function(gpio) {
 		this.notify = function (callback) {
 			// only allow one notifier per gpio object
 			if (notifierID !== null) {
-				console.log('Warning: notifier already registered, ignored');
+				that.emit('error', new Error('Notifier already registered for this gpio.'));
 				return;
 			}
-			// get the current levels to compare against for changes
-			that.readBank1((levels)=>{
-				let oldLevels = levels;
-				// now detect if gpio level has changed
-				let gpioBitValue = 1<<gpio;
-				notifierID = that.startNotifications(gpioBitValue,(levels, tick)=> {
-//Todo: janky code here, you fix it Mr Awesome!
+			
+			let gpioBitValue = 1<<gpio;
+			notifierID = that.startNotifications(gpioBitValue, (levels, tick)=> {
+				
+				// When notifications are ended, last callback has null arguments
 				if (levels===null) {
-						callback(null,null);
-						return;
-					}
-					let changes = oldLevels ^ levels;
-					oldLevels = levels;
-					if (gpioBitValue & changes) {
-						let level = (gpioBitValue&levels)>>gpio;
-						callback(level,tick);
-					}
-				});
+					return callback(null,null);;
+				}
+				let level = (gpioBitValue&levels)>>gpio;
+				callback(level,tick);
 			});
 			
 		}
-		this.endNotify = function () {
-			if (notifierID !== null) that.stopNotifications(notifierID);
-			notifierID = null;
+		this.endNotify = function (cb) {
+			if (notifierID !== null) {
+				that.stopNotifications(notifierID, (err, res) =>{
+					notifierID = null;
+					cb(err, res);
+				});
+			}
 		}
 
 	// Waveform generation methods
@@ -551,7 +545,7 @@ that.gpio = function(gpio) {
 				chain = temp;
 				temp = [];
 			});
-	//console.log( chain );
+
 			var arrBuf = new ArrayBuffer(chain.length);
 			var buffer = new Uint8Array(arrBuf);
 			for (let i=0; i<chain.length; i++) buffer[i] = chain[i];
@@ -615,16 +609,13 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 */
 that.serialport = function(rx,tx,dtr) {
 	var _serialport = function(rx, tx, dtr) {
-		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid;
-		// check gpio pins are valid and (todo) available
-		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
-			return undefined;
+		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid, txBusy=false, charsInPigpioBuf=0;
 		var _rx = new that.gpio(rx);
 		var _tx;
 		if (tx === rx) { // loopback mode
 			_tx = _rx;
 		} else _tx = new that.gpio(tx);
-		var _dtr = new that.gpio(dtr);
+		var _dtr = (dtr===tx)? _tx : new that.gpio(dtr);
 		_rx.modeSet('input'); // need a pullup?
 		_tx.modeSet('output');
 		_tx.write(1);
@@ -649,16 +640,18 @@ that.serialport = function(rx,tx,dtr) {
 					}
 					else { // serial rx is open
 						isOpen = true;
-						// pulse dtr pin to reset Arduino
-						_dtr.write(0, ()=> {
-							setTimeout( ()=> {_dtr.write(1)}, 10);
-						});
+						if (dtr!==tx) {
+              // pulse dtr pin to reset Arduino
+              _dtr.write(0, ()=> {
+                setTimeout( ()=> {_dtr.write(1)}, 10);
+              });
+            }
 						callback(null);
 					}
 				});
 				// initialize tx
-				//_tx.waveClear();
-				request(53,0,0,0);  // init new wave
+				_tx.waveClear();
+				//request(53,0,0,0);  // init new wave
 			} else {
 				isOpen = false;
 				callback("Error: invalid arguments");
@@ -668,7 +661,7 @@ that.serialport = function(rx,tx,dtr) {
 			let count, callb;
 			if (typeof size === 'function') {
 				callb = size;
-				count = 1;
+				count = 1200;
 			} else {
 				callb = cb;
 				count = size || 1; // must read at least a byte at a time
@@ -679,7 +672,6 @@ that.serialport = function(rx,tx,dtr) {
 	//in the internal buffer will be returned.
 				_rx.serialRead(count, (err,len,...bytes)=> {
 					if (err) {
-						//console.log("Serialport rx error: "+err);
 						callb(err);
 					} else if (len===0) {
 						callb(null,null);
@@ -690,24 +682,53 @@ that.serialport = function(rx,tx,dtr) {
 				});
 			} else callb(null);
 		}
-		this.write = function(data) {
-			if (isOpen) {
-			_tx.waveAddSerial(baud, bits, delay, data, () => {
-				_tx.waveCreate((err,id)=> {
-					next_wid = id;
-					//for now just wait not busy.  Todo: sync it
-					_tx.waveNotBusy( ()=> {
-						_tx.waveSendOnce(next_wid);
-						// clean up, recycle wids
-						if (current_wid !== null) {
-							_tx.waveDelete(current_wid);
-						}
-						current_wid = next_wid;
-					});
-				});
-			});
-			}
+		
+    this.write = function(data) {
+      if (isOpen === false) {
+        return -1
+      }
+      if (data.length > (600 - charsInPigpioBuf)){
+        return null
+      }
+      _tx.waveAddSerial(baud, bits, delay, data, (err, res) => {
+        if (err) throw new Error('unexpected pigpio error'+err)
+        charsInPigpioBuf += data.length
+      })
+      delay += Math.ceil( ((data.length+1) * (bits+2) / baud) * 1000000 );
+      if (!txBusy) {
+        sendSerial();
+      }
+      
+      function sendSerial () {
+        txBusy = true;
+        let millis = Math.ceil(delay/1000);
+        _tx.waveCreate( (err, id) => {
+          if (err) throw new Error('unexpected pigpio error'+err);
+          next_wid = id;
+          charsInPigpioBuf = 0
+          _tx.waveSendOnce(next_wid, (err, res) => {
+            setTimeout( ()=> {
+              _tx.waveBusy( (err, res) => {
+                if (err) throw new Error('unexpected pigpio error'+err);
+                if (res===1) {
+                  console.log('busy! serialport timeout is too short!');
+                }
+              });
+              txBusy = false;
+              // clean up, recycle wids
+              if (current_wid !== null) {
+                _tx.waveDelete(current_wid);
+              }
+              current_wid = next_wid;
+              if (delay) sendSerial()
+            }, millis);
+          });
+        });
+        delay = 0;
+      }
+      return data.length
 		}
+    
 		this.close = function(callback) {
 			if (isOpen) {
 				_rx.serialReadClose( () => {
@@ -727,7 +748,12 @@ that.serialport = function(rx,tx,dtr) {
 			}); }); });
 		}
 
-	}//serialport
+	}//_serialport()
+  
+  // check gpio pins are valid and (todo) available
+  if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr))) {
+    return undefined
+  }
 	_serialport.prototype = that;
 	return new _serialport(rx,tx,dtr);
 }//pigpio serialport constructor
