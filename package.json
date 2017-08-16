@@ -1,13 +1,12 @@
 {
   "name": "pigpio-client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A nodejs socket interface to pigpio daemon.",
   "main": "pigpio-client.js",
   "directories": {
     "test": "test"
   },
-  "devDependencies": {
-  },
+  "devDependencies": {},
   "scripts": {
     "test": "node ./test/serialport.js"
   },
@@ -21,9 +20,9 @@
   ],
   "author": "Guy McSwain",
   "license": "ISC",
-  "repository":
-    { "type": "git"
-    , "url": "https://github.com/guymcswain/pigpio-client.git"
-    },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guymcswain/pigpio-client.git"
+  },
   "bugs": "https://github.com/guymcswain/pigpio-client/issues"
 }
