@@ -102,21 +102,11 @@ buffer size is 600 characters (8-bit data).  Double buffered so transmits while 
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
 ### Bugs
+https://github.com/guymcswain/pigpio-client/issues
 
-### Todo
-- Implement pigpiod error codes decoder.
-- Simplify callback arguments to just err, res instead of err, res, ...len.  Res may be scalar or array.
-- Notifications socket: check for notification errors response (res[3])?  See pigpio python code.
-- test for callback queue underflow?
-- Use waveSendSync in serialport.write to improve performance.
-- Make serialport.read similar to readable.read api
-- Add true flow control and modem support to serialport.read
-
-### Ideas
-- Waveforms should be accessible through a lock to gpio objects exclusive access during waveform creation/initialization, building or deletion.
-- gpio objects keep track of their wave ids and delete them when gpio.end().  Avoids global clear waves.
-- use gpio.waveTxAt to determine if another gpio wave is active (not in set of owned wave ids).
-- keep track of gpio in use/avaiable, prevent overlapping gpio objects.
+Please run the serial port test using npm test.  Set up your npm environment as follows:
+npm config set pigpio-client:host 'ip address of your rpi'
+npm config set pigpio-client:gpio 'unused gpio number'
 
 #### Running pigpiod with permissions
 ```

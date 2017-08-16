@@ -24,8 +24,8 @@ var info = {
 	host: 'localhost',
 	port: 8888,
 	pipelining: false,
-	conn1: false,		// command socket connection status
-	conn2: false,		// notification socket connnection status
+	commandSocket: false,		// command socket connection status
+	notificationSocket: false,		// notification socket connnection status
 	pigpioVersion: '',
 	hwVersion: '',
 	hardware_type: 2,	// 26 pin plus 8 pin connectors (ie rpi model B)
@@ -66,8 +66,8 @@ exports.pigpio = function(pi) {
 					info.hardware_type = 3;
 					info.userGpioMask = 0xffffffc;
 				}
-				info.conn1 = true;
-				if (info.conn2) {
+				info.commandSocket = true;
+				if (info.notificationSocket) {
           that.emit('connected', info)
         }
 			});
@@ -233,8 +233,8 @@ exports.pigpio = function(pi) {
 				handle = res[3];
 				if (process.env.DEBUG)
 				console.log('opened notification socket with handle= '+handle);
-				info.conn2 = true;
-        if (info.conn1) {
+				info.notificationSocket = true;
+        if (info.commandSocket) {
           that.emit('connected', info)
         }
 				// listener that monitors all gpio bits
@@ -352,8 +352,8 @@ exports.pigpio = function(pi) {
 \tRPi HW type : ${info.hardware_type}
 \tUser GPIO : ${info.userGpioMask.toString(16)}
 \tpipelining : ${info.pipelining}
-\tcommand socket connected : ${info.conn1}
-\tnotifications socket connected : ${info.conn2}`);
+\tcommand socket connected : ${info.commandSocket}
+\tnotification socket connected : ${info.notificationSocket}`);
 	}
 	that.getCurrentTick = function(cb) {
 		that.request(TICK,0,0,0,cb);
@@ -373,14 +373,14 @@ exports.pigpio = function(pi) {
 		commandSocket.end();
 		notificationSocket.end();
 		commandSocket.on('close', () => {
-			info.conn1 = false
-      if (!info.conn2) {
+			info.commandSocket = false
+      if (!info.notificationSocket) {
 				if (typeof cb === 'function') cb();
 			}
 		});
 		notificationSocket.on('close', ()=>{
-			info.conn2 = false
-      if (!info.conn1) {
+			info.notificationSocket = false
+      if (!info.commandSocket) {
 				if (typeof cb === 'function') cb();
 			}
 		});
@@ -610,15 +610,12 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 that.serialport = function(rx,tx,dtr) {
 	var _serialport = function(rx, tx, dtr) {
 		var baud, bits, delay=0, isOpen=false, current_wid = null, next_wid, txBusy=false, charsInPigpioBuf=0;
-		// check gpio pins are valid and (todo) available
-		if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr)))
-			return undefined;
 		var _rx = new that.gpio(rx);
 		var _tx;
 		if (tx === rx) { // loopback mode
 			_tx = _rx;
 		} else _tx = new that.gpio(tx);
-		var _dtr = new that.gpio(dtr);
+		var _dtr = (dtr===tx)? _tx : new that.gpio(dtr);
 		_rx.modeSet('input'); // need a pullup?
 		_tx.modeSet('output');
 		_tx.write(1);
@@ -643,10 +640,12 @@ that.serialport = function(rx,tx,dtr) {
 					}
 					else { // serial rx is open
 						isOpen = true;
-						// pulse dtr pin to reset Arduino
-						_dtr.write(0, ()=> {
-							setTimeout( ()=> {_dtr.write(1)}, 10);
-						});
+						if (dtr!==tx) {
+              // pulse dtr pin to reset Arduino
+              _dtr.write(0, ()=> {
+                setTimeout( ()=> {_dtr.write(1)}, 10);
+              });
+            }
 						callback(null);
 					}
 				});
@@ -749,7 +748,12 @@ that.serialport = function(rx,tx,dtr) {
 			}); }); });
 		}
 
-	}//serialport
+	}//_serialport()
+  
+  // check gpio pins are valid and (todo) available
+  if (!(that.isUserGpio(rx)&&that.isUserGpio(tx)&&that.isUserGpio(dtr))) {
+    return undefined
+  }
 	_serialport.prototype = that;
 	return new _serialport(rx,tx,dtr);
 }//pigpio serialport constructor

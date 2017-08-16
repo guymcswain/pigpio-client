@@ -1,129 +1,137 @@
 'use strict';
+/*
+This script tests a serial port created using pigpio-client (ie bit-bang).  The
+serial port is configured in a loop-back configuration (rx==tx==drt) allowing a
+single unused pin for testing on the raspberry pi.
+Caution:  This test uses GPIO25 configured as an output.  Verify that you don't
+have anything connected to this pin or choose another unused pin when
+constructing serialport object.
+
+Usage:
+  0. Install pigpio daemon on hosting raspberry pi:
+      sudo apt-get install pigpio
+  1. Run the pigpio daemon on the host:
+      sudo pigpiod
+  2. Configure your npm environment:
+      npm config set pigpio-client:host 'ip address of your rpi'
+      npm config set pigpio-client:gpio 'unused gpio number'
+  3. npm test
+*/
+const config = {
+    host: process.env.npm_package_config_host
+  , port: 8888
+  , pipelining: false
+  , gpio: parseInt(process.env.npm_package_config_gpio,10)
+  , baudRate: parseInt(process.env.npm_package_config_baud,10)
+  , dataBits: 8
+}
+console.log('config = '+JSON.stringify(config,null,2))
+const assert = require('assert')
 const LoremIpsum = require('../../../.npm-global/lib/node_modules/lorem-ipsum')
-var lorip = LoremIpsum()
-console.log(lorip)
+
 const PigpioClient = require('../pigpio-client');
-//const pi = PigpioClient.pigpio({host:'10.0.0.56'});  // surveyor host
-const pi = PigpioClient.pigpio({host:'10.0.0.105'});  // surveyor host (wireless)
+const pi = PigpioClient.pigpio(config);
+console.log('Serial port test.  Waiting to connect ...')
 
 pi.on('connected', (info)=> {
-  if (typeof info !== 'undefined') {
-    console.log(JSON.stringify(info,null,2))
-    pi.request(35,2,0,0, (err, res)=> {
-      console.log('max pulses = '+res)
-    })
+  console.log(JSON.stringify(info,null,2))
+  
+  var maxChars
+  pi.request(35, 2, 0, 0, (err, res) => { // get wave statistics max pulses
+    maxChars = res/2/(config.dataBits+2) // double buffered, databits + start + stop
     runSerialPortTest()
-  }
-  else {
-    setTimeout( () => {
-      runSerialPortTest()
-    }, 500)
-  }
+  })
   
   function runSerialPortTest() {
-    var serial = pi.serialport(5,5,6); // loopback: rx=tx
-    if (serial !== undefined) console.log("Have serialport object!");
-    var readTimer
+    var rx = config.gpio
+        , tx = rx  // loopback: rx=tx
+        , dtr = tx // no dtr: dtr=tx
+    var serial = pi.serialport(rx,tx,dtr);
+    if (serial === undefined) {
+      console.log("Failed to create serialport object, exiting test!")
+      pi.end()
+      return
+    }
 
-    serial.open(38400, 8, (err)=> {
-      if (err) console.log(err);
-      else {
-        console.log('serial port is open');
-        
-        // start read timer
-        console.log('trying serial.read');
-        readTimer = setInterval( ()=> {
-          serial.read( (err,data)=> {
-            if (err) {
-              console.log("Error! "+err);
-            }
-            else if (data !== null) {
-              console.log('read this many bytes: '+data.length)
-              console.log('\t'+data);
-            }
-            
-          });
-        },100);
-        
-        // write
-        console.log('trying serial.write');
-        let toSend = Buffer.from("Hello, ");
-        serial.write(toSend);
-        toSend = Buffer.from("I love you, ");
-        serial.write(toSend);
-        serial.write("won't you tell me your name?")
-        
-        // wait, then write some more
-        setTimeout( () => {
-          let words = LoremIpsum({count:1000, units: 'words'})
-          let chars = words.slice(0,600);
-          console.log(`sending ${chars.length} characters`)
-          let sent = serial.write(chars)
-          console.log('sent char count = '+sent)
-          chars = words.slice(600,1200)
-          console.log(`sending ${chars.length} characters`)
-          sent = serial.write(chars)
-          console.log('sent char count = '+sent)
-        }, 500)
-        
+    serial.open(config.baudRate, config.dataBits, (err)=> {
+      if (err) {
+        console.log(err)
+        return endTest()
       }
+      console.log('serial port open')
+      console.log('Test 1:  Write back-to-back small chunks');
+      let toSend = Buffer.from("Hello, I love you, won't you tell me your name?");
+      serial.write(toSend.slice(0,8))
+      serial.write(toSend.slice(8,19))
+      serial.write(toSend.slice(19))
+      loopReadTest(toSend, () => {
+        console.log('Test 2:  Write back-to-back max chunks')
+        let words = LoremIpsum({count:100, units: 'sentences'})
+        let chars = words.slice(0,maxChars);
+        let sent = serial.write(chars)
+        assert.strictEqual(sent, chars.length, "serialport.write return value!")
+        chars = words.slice(maxChars,maxChars*2)
+        sent = serial.write(chars)
+        assert.strictEqual(sent, chars.length, "serialport.write return value!")
+        loopReadTest(Buffer.from(words.slice(0,maxChars*2)), endTest)
+      })
     });
     
-    console.log('waiting for timeout');
-    setTimeout(function() {
-      clearInterval(readTimer)
+    // reads data.length characters then compares data
+    function loopReadTest(data, cb) {
+      //console.log("loopReadTest called, size= "+data.length)
+      setTimeout( () => {
+        serial.read(data.length, (err, results) => {
+          if (err) {
+            throw new Error(err)
+          }
+          if (results === null) {
+            return loopReadTest(data, cb)
+          }
+          if (results.length <= data.length) {
+            //console.log(results.toString())
+            if (results.compare(data,0,results.length)) {
+              console.log('\tFAIL!!!')
+            }
+            else {
+              console.log('\tpass')
+            }
+            if (results.length === data.length) {
+              if (cb !== undefined) return cb()
+              return null
+            }
+            return loopReadTest(data.slice(results.length), cb)
+          }
+          else {
+              throw new Error('results too big!')
+          }
+        })
+      }, data.length*(config.dataBits+2)*1000/config.baudRate + 20)
+    }
+        
+    function endTest() {
       serial.close( ()=> {
-        console.log('closed serial port');
+        console.log('serial port closed');
         pi.end( () => {
-          let info = pi.getInfo()
-          console.log(info)
+          //let info = pi.getInfo()
+          //console.log(info)
           pi.destroy(); 
           console.log("Goodbye");
         })
       });
-    },5000);
-  
+    }
+    
+    // watchdog
+    var wdog = setTimeout( () => {
+      console.log('watchdog time out')
+      endTest()
+    }, 5000)
+    wdog.unref()
+
   }//end runSerialPortTest()
   
 });
 
 pi.on('error', (err)=> {
-	//throw err);
 	console.log('!!!!! '+err.message);
 });
-
-
-/*
-var pigpioClient = require('../pigpio-client');
-	var myPi = pigpioClient.pigpio({host:'10.0.0.12',pipelining:false});
-	myPi.on('connected', (info)=> {
-		//console.log('connected rpi with info:');
-		//console.log(info);
-		//console.log('connect status:'+myPi.connected());
-		let piInfo = myPi.getInfo();
-		console.log(piInfo);
-		
-		var led = myPi.gpio(17);
-		led.modeSet('output');
-		led.write(0); // turn led off
-		
-		var ledIsOn = false;
-
-		var timer = setInterval(function() {
-			if (ledIsOn) {
-				//myPi.write(17,0);
-				led.write(0);
-				console.log('led off');
-				ledIsOn = false;
-			}
-			else {
-				//myPi.write(17,1);
-				led.write(1);
-				console.log('led on');
-				ledIsOn = true;
-			}
-		},500);
-
-
-	});
-*/		

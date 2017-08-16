@@ -9,11 +9,21 @@
   "devDependencies": {
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node ./test/serialport.js"
+  },
+  "config": {
+    "host": "localhost",
+    "gpio": "25",
+    "baud": "38400"
   },
   "keywords": [
     "pigpiod"
   ],
   "author": "Guy McSwain",
-  "license": "ISC"
+  "license": "ISC",
+  "repository":
+    { "type": "git"
+    , "url": "https://github.com/guymcswain/pigpio-client.git"
+    },
+  "bugs": "https://github.com/guymcswain/pigpio-client/issues"
 }
