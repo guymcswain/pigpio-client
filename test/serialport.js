@@ -27,7 +27,7 @@ const config = {
 }
 console.log('config = '+JSON.stringify(config,null,2))
 const assert = require('assert')
-const LoremIpsum = require('../../../.npm-global/lib/node_modules/lorem-ipsum')
+const LoremIpsum = require('lorem-ipsum')
 
 const PigpioClient = require('../pigpio-client');
 const pi = PigpioClient.pigpio(config);
