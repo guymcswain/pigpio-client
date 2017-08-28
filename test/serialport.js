@@ -61,19 +61,29 @@ pi.on('connected', (info) => {
       console.log('serial port open')
       console.log('Test 1:  Write back-to-back small chunks')
       let toSend = Buffer.from("Hello, I love you, won't you tell me your name?")
-      serial.write(toSend.slice(0, 8))
-      serial.write(toSend.slice(8, 19))
-      serial.write(toSend.slice(19))
+      serial.write(toSend.slice(0, 8), (err) => {
+        if (err) throw err
+         serial.write(toSend.slice(8, 19), (err) => {
+          if (err) throw err
+          serial.write(toSend.slice(19), (err) => {
+            if (err) throw err
+          })
+        })
+      })
+     
+      
       loopReadTest(toSend, () => {
         console.log('Test 2:  Write back-to-back max chunks')
         let words = LoremIpsum({count: 100, units: 'sentences'})
         let chars = words.slice(0, maxChars)
-        let sent = serial.write(chars)
-        assert.strictEqual(sent, chars.length, 'serialport.write return value!')
-        chars = words.slice(maxChars, maxChars * 2)
-        sent = serial.write(chars)
-        assert.strictEqual(sent, chars.length, 'serialport.write return value!')
-        loopReadTest(Buffer.from(words.slice(0, maxChars * 2)), endTest)
+        let sent = serial.write(chars, (err) => {
+          assert.strictEqual(sent, null, 'serialport.write return value!')
+          chars = words.slice(maxChars, maxChars * 2)
+          sent = serial.write(chars, (err) => {
+            assert.strictEqual(sent, null, 'serialport.write return value!')
+            loopReadTest(Buffer.from(words.slice(0, maxChars * 2)), endTest)
+          })
+        })
       })
     })
 
