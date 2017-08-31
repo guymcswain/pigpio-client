@@ -100,7 +100,7 @@ This is done by issuing the 'NOIB' (notification open in-band) command to the co
 **serialport.open(baudrate,databits,cb)**  Callback arg is null if sucessful, error message otherwise.  
 **serialport.read(cb)**  Callback arg is null if no data available, else buffer object.  
 **serialport.write(data)**  Data is string or buffer or array.  Returns null if data cannot be written.  The write
-buffer size is 600 characters (8-bit data).  Double buffered so transmits while accepting more data.  
+buffer size is 1200 characters (8-bit data).  
 **serialport.close(cb)**  Close serialport.  
 **serialport.end(cb)**  Close bb_serial_read, disable outputs and undef serialport.  
 
@@ -111,6 +111,8 @@ Please run the serial port test using npm test.  Set up your npm environment as 
 npm config set pigpio-client:host 'ip address of your rpi'  
 npm config set pigpio-client:gpio 'unused gpio number'  
 
+#### Limitations
+Only a single serial port instance is supported.  **v1.0.x**
 #### Running pigpiod with permissions
 ```
   $ sudo pigpiod -s 1 # 1 microsecond sampling\

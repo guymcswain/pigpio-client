@@ -663,12 +663,13 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         if (isOpen === false) {
           return -1
         }
-        if (data.length > (600 - charsInPigpioBuf)) {
+        if (data.length > (1200 - charsInPigpioBuf)) {
           return null
         }
+        charsInPigpioBuf += data.length
         _tx.waveAddSerial(baud, bits, delay, data, (err, res) => {
           if (err) throw new Error('unexpected pigpio error' + err)
-          charsInPigpioBuf += data.length
+         
         })
         delay += Math.ceil(((data.length + 1) * (bits + 2) / baud) * 1000000)
         if (!txBusy) {
@@ -678,11 +679,10 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         function sendSerial () {
           txBusy = true
           let millis = Math.ceil(delay / 1000)
-          _tx.waveCreate((err, id) => {
+          _tx.waveCreate((err, wid) => {
             if (err) throw new Error('unexpected pigpio error' + err)
-            next_wid = id
             charsInPigpioBuf = 0
-            _tx.waveSendOnce(next_wid, (err, res) => {
+            _tx.waveSendOnce(wid, (err, res) => {
               setTimeout(() => {
                 _tx.waveBusy((err, res) => {
                   if (err) throw new Error('unexpected pigpio error' + err)
@@ -691,12 +691,12 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
                   }
                 })
                 txBusy = false
+              
               // clean up, recycle wids
-                if (current_wid !== null) {
-                  _tx.waveDelete(current_wid)
-                }
-                current_wid = next_wid
-                if (delay) sendSerial()
+                _tx.waveDelete(wid, (err) => {
+                  if (delay) sendSerial()
+                })
+                
               }, millis)
             })
           })

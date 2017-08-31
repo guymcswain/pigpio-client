@@ -67,15 +67,27 @@ pi.on('connected', (info) => {
       loopReadTest(toSend, () => {
         console.log('Test 2:  Write back-to-back max chunks')
         let words = LoremIpsum({count: 100, units: 'sentences'})
-        let chars = words.slice(0, maxChars)
-        let sent = serial.write(chars)
-        assert.strictEqual(sent, chars.length, 'serialport.write return value!')
-        chars = words.slice(maxChars, maxChars * 2)
-        sent = serial.write(chars)
-        assert.strictEqual(sent, chars.length, 'serialport.write return value!')
-        loopReadTest(Buffer.from(words.slice(0, maxChars * 2)), endTest)
+        console.log(`sending ${words.length} characters`)
+        sendSerial(words, () => {
+          loopReadTest(Buffer.from(words), endTest)
+        })
       })
     })
+    
+    function sendSerial(data, cb) {
+      if (data) {
+        let count = serial.write(data.slice(0,1200))
+        if (count !== null) {
+          sendSerial(data.slice(1200), cb)
+        }
+        else {
+          setTimeout(sendSerial, 100, data, cb)
+        }
+      }
+      else {
+        return cb(null)
+      }
+    }
 
     // reads data.length characters then compares data
     function loopReadTest (data, cb) {
