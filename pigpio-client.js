@@ -586,7 +586,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 */
   that.serialport = function (rx, tx, dtr) {
     var _serialport = function (rx, tx, dtr) {
-      var baud, bits, delay = 0, isOpen = false, current_wid = null, next_wid, txBusy = false, charsInPigpioBuf = 0
+      var baud, bits, delay = 0, isOpen = false, txBusy = false
       var _rx = new that.gpio(rx)
       var _tx
       if (tx === rx) { // loopback mode
@@ -607,10 +607,11 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         // initialize rx
           _rx.serialReadOpen(baud, bits, (err) => {
             if (err === -50) {
-            // if err is -50 we may have crashed without closing
-              _rx.serialReadClose() // close it and try again
-              isOpen = false
-              callback('port in use, closing, try again')
+            // if err is -50 we may have crashed without closing. Close it and try again
+              _rx.serialReadClose((err) => {
+                isOpen = false
+                callback('port in use, closing, try again')
+              })
             } else if (err) {
               isOpen = false
               callback('Error opening serialport: ' + err)
@@ -627,13 +628,12 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           })
         // initialize tx
           _tx.waveClear()
-        // request(53,0,0,0);  // init new wave
         } else {
           isOpen = false
           callback('Error: invalid arguments')
         }
       }
-            
+
       // v1.0.x API, deprecated, use a read stream wrapping readStart(), readStop(), and 'data' event.
       this.read = function (size, cb) {
         let count, callb
@@ -658,78 +658,80 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         } else callb(null)
       }
       var timer
+      var sp = this
       this.readStart = function () {
-        _rx.serialRead(1200, (err, len, data) => {
-          if (data)
-            this.emit('data', Buffer.from(bytes))
-        })
-        timer = setInterval( () => {
-          _rx.serialRead(1200, (err, len, data) => {
-            if (data)
-              this.emit('data', Buffer.from(bytes))
+        if (isOpen) {
+          _rx.serialRead(2400, (err, len, ...data) => {
+            if (len) { sp.emit('data', Buffer.from(data)) }
           })
-        }, 100)
-        
+          timer = setInterval(() => {
+            read()
+            function read () {
+              _rx.serialRead(4800, (err, len, ...data) => {
+                if (len) { sp.emit('data', Buffer.from(data)) }
+              })
+            }
+          }, 200)
+          timer.unref()
+        }
       }
       this.readStop = function () {
         clearInterval(timer)
       }
-      
+
       this.write = function (data, callback) {
-        if (isOpen === false) {
-          return callback(new Error('Serial port is not open'))
-        }
-        if (data.length > (600 - charsInPigpioBuf)) {
-          return callback(new Error('Serial write overflow'))
-        }
-        _tx.waveAddSerial(baud, bits, 0, data, (err, res) => {
-          if (err) return callback(new Error('_tx.waveAddSerial error' + err))
-          else {
-            // update buffer limit based on pulse count returned?
-            waveSend(callback)
-          }
-        })
-        function waveSend(callback) {
-          _tx.waveCreate( (err, wid) => {
-            next_wid = wid
-            _tx.waveSendSync(next_wid, (err, cbs) => {
-              waitWaveTx(next_wid, (err) => {
-                if (err) callback(err)
-                if (current_wid !== null) {
-                  _tx.waveDelete(current_wid)
-                  current_wid = next_wid
-                  return callback(null)
-                }
-              })
+        var send = function send (dataLength, callback) {
+          _tx.waveCreate((err, wid) => {
+            if (err) return callback(new Error(`waveCreate=${err}`))
+            _tx.waveSendOnce(wid, (err, cbs) => {
+              if (err) return callback(new Error('waveSendOnce=' + err))
+              txBusy = true
+
+              setTimeout(() => {
+                _tx.waveBusy((err, busy) => {
+                  if (err) return callback(new Error('waveBusy=' + err))
+                  if (busy) throw new Error('trying to delete wave while busy!')
+                })
+                _tx.waveDelete(wid, (err) => {
+                  if (err) return callback(new Error('waveDelete=' + err))
+                  txBusy = false
+                  sp.emit('txDone')
+                })
+              }, dataLength * 10 * 1000 / baud)
+              return callback(null)
             })
           })
         }
-        function waitWaveTx(wid, callback) {
-          
-          // waveTxAt does not return error (ie err always 0)
-          _tx.waveTxAt( (err, txwid) => {
-            if (txwid===9998) callback(new Error('waveTxAt wave not found'))
-            
-            // return if currently transmitting wid or idle
-            if (wid === txwid && txwid===9999)
-              callback(null)
-            else
-              setTimeout(waitWaveTx, 25, wid, callback)
+
+        if (isOpen === false) {
+          return callback(new Error('Serial port is not open'))
+        }
+        if (data.length > 600) {
+          return callback(new Error('Serial write overflow'))
+        }
+        _tx.waveAddSerial(baud, bits, 0, data, (err, pulses) => {
+          if (err) return callback(new Error('_tx.waveAddSerial error=' + err))
+          // Todo:  Update buffer limit based on returned pulse count?
+          if (!txBusy) { return setImmediate(send, data.length, callback) } else { return waitTxDone() }
+        })
+        function waitTxDone () {
+          sp.once('txDone', function () {
+            setImmediate(send, data.length, callback)
           })
         }
       }
-      
+
       this.close = function (callback) {
+        clearInterval(timer)
+        sp.emit('data', null)
         if (isOpen) {
-         clearInterval(timer)
-         this.emit('data', null)
-         _rx.serialReadClose(() => {
+          _rx.serialReadClose(() => {
             isOpen = false
             if (callback) callback()
           })
         } else if (callback) callback()
       }
-    
+
       this.end = function (callback) {
         _rx.serialReadClose(() => {
           _tx.modeSet('input', () => { // end()
@@ -748,7 +750,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
     if (!(that.isUserGpio(rx) && that.isUserGpio(tx) && that.isUserGpio(dtr))) {
       return undefined
     }
-    _serialport.prototype = that
+    _serialport.prototype = Object.create(EventEmitter.prototype)
     return new _serialport(rx, tx, dtr)
   }// pigpio serialport constructor
   return that
