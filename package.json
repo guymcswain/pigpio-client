@@ -10,7 +10,7 @@
     "lorem-ipsum": "^1.0.4"
   },
   "scripts": {
-    "test": "node ./test/serialport.js"
+    "test": "node ./test/notifications.js && node ./test/serialport.js"
   },
   "config": {
     "host": "localhost",

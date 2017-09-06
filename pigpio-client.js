@@ -229,9 +229,12 @@ exports.pigpio = function (pi) {
         }
         // listener that monitors all gpio bits
         notificationSocket.on('data', function (chunk) {
+          if (process.env.DEBUG) {
+            console.log(`notification received: chunk size = ${chunk.length}`)
+          }
           var buf = Buffer.concat([chunklet, chunk])
           let remainder = buf.length % 12
-          chunklet = buf.slice(-remainder)
+          chunklet = buf.slice(buf.length-remainder)
 
           // skip if buf is a fragment
           if (buf.length / 12 > 0) {
@@ -241,7 +244,7 @@ exports.pigpio = function (pi) {
                 flags = buf.readUInt16LE(i + 2),
                 tick = buf.readUInt32LE(i + 4),
                 levels = buf.readUInt32LE(i + 8)
-              oldLevels = (typeof oldLevels === 'undefined') ? levels : oldLevels
+              //oldLevels = (typeof oldLevels === 'undefined') ? levels : oldLevels
               let changes = oldLevels ^ levels
               oldLevels = levels
               for (let nob of notifiers.keys()) {
@@ -297,8 +300,19 @@ exports.pigpio = function (pi) {
 
     // Update monitor with bits
     monitorBits |= bits
-    // send 'notifiy begin' command
-    request(NB, handle, monitorBits, 0)
+    // First start notification initializes the current levels (oldLevels)
+    if (typeof oldLevels === 'undefined') {
+      request(BR1, 0, 0, 0, (err, levels) => {
+        if (err) that.emit('error', new Error(err))
+        oldLevels = levels
+        request(NB, handle, monitorBits, 0)
+      })
+    }
+    else {
+      // send 'notifiy begin' command
+      request(NB, handle, monitorBits, 0)
+    }
+    
 
     // return the callback 'id'
     return nob.id
