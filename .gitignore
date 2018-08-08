@@ -1,5 +1,6 @@
-# ignore test directory
+# ignore directories
 #test/*
+temp/*
 
 # ignore readme.md derived files
 *.html

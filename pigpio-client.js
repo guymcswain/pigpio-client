@@ -21,11 +21,12 @@ const extResCmdSet = new Set([SLR])
 const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2
 const PI_WAVE_MODE_ONE_SHOT = 0, PI_WAVE_MODE_REPEAT = 1, PI_WAVE_MODE_ONE_SHOT_SYNC = 2, PI_WAVE_MODE_REPEAT_SYNC = 3
 var info = {
+  reconnection: true,  // Todo: make default true in next semver major
   host: 'localhost',
   port: 8888,
   pipelining: false,
-  commandSocket: false,    // command socket connection status
-  notificationSocket: false,    // notification socket connnection status
+  commandSocket: undefined,       // connection status undefined until 1st connect
+  notificationSocket: undefined,  // connection status undefined until 1st connect
   pigpioVersion: '',
   hwVersion: '',
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
@@ -40,50 +41,68 @@ exports.pigpio = function (pi) {
   info.host = pi.host || info.host
   info.port = pi.port || info.port
   info.pipelining = pi.pipelining || info.pipelining
-
+  info.reconnection = (pi.hasOwnProperty('reconnection'))? pi.reconnection : info.reconnection
   // constructor object inherits from EventEmitter
   var that = new MyEmitter() // can't use prototypal inheritance
 
 // Command socket
-  var commandSocket = net.createConnection(info.port, info.host, () => {
-    // 'connect' listener
+  var commandSocket = net.createConnection(info.port, info.host)
+  commandSocket.on('connect', cmdSockConnectHandler)
+  // 'connect' listener
+  function cmdSockConnectHandler() {
+    if (typeof info.commandSocket === 'undefined') {
+      console.log("Connecting for the first time.  Emit 'connected' event if ready.")
+      request(PIGPV, 0, 0, 0, (err, res) => {
+        info.pigpioVersion = res
 
-    // Update more info
-    request(PIGPV, 0, 0, 0, (err, res) => {
-      info.pigpioVersion = res
-
-      request(HWVER, 0, 0, 0, (err, version) => {
-        info.hwVersion = version
-        if ((version >= 2) && (version <= 3)) {
-          info.hardware_type = 1
-          info.userGpioMask = 0x3e6cf93
-        }
-        if ((version > 4) && (version < 15)) {
-          info.hardware_type = 2
-          info.userGpioMask = 0xfbc6cf9c  // default
-        }
-        if (version > 15) {
-          info.hardware_type = 3
-          info.userGpioMask = 0xffffffc
-        }
-        info.commandSocket = true
-        if (info.notificationSocket) {
-          that.emit('connected', info)
-        }
+        request(HWVER, 0, 0, 0, (err, version) => {
+          info.hwVersion = version
+          if ((version >= 2) && (version <= 3)) {
+            info.hardware_type = 1
+            info.userGpioMask = 0x3e6cf93
+          }
+          if ((version > 4) && (version < 15)) {
+            info.hardware_type = 2
+            info.userGpioMask = 0xfbc6cf9c  // default
+          }
+          if (version > 15) {
+            info.hardware_type = 3
+            info.userGpioMask = 0xffffffc
+          }
+          info.commandSocket = true
+          if (info.notificationSocket) {
+            that.emit('connected', info)
+          }
+        })
       })
-    })
-  })
+    }
+    else {
+      info.commandSocket = true
+      console.log('pigpio command socket reconnected')
+    }
+  }
   commandSocket.on('error', function (err) {
     that.emit('error', new Error('pigpio-client command socket:' + JSON.stringify(err)))
   })
   commandSocket.on('end', function () {
-    if (process.env.DEBUG) {
-      console.log('pigpio end received')
-    }
+    info.commandSocket = false
+    //if (process.env.DEBUG) {
+      console.log('pigpio command socket end received')
+    //}
   })
-  commandSocket.on('close', function () {
-    if (process.env.DEBUG) {
+  commandSocket.on('close', function (had_error) {
+    info.commandSocket = false
+    if (had_error) {
+      console.log('pigpio command socket closed with error: ', had_error)
+    }
+    else {
       console.log('pigpio command socket closed')
+    }
+    if (info.reconnection === true) {
+      setTimeout( () => {
+        commandSocket.connect(info.port, info.host)
+      }, 5000)
+      console.log('auto reconnect to pigpio in 5 seconds ...')
     }
   })
 
@@ -263,14 +282,14 @@ exports.pigpio = function (pi) {
     that.emit('error', new Error('pigpio-client notification socket:' + JSON.stringify(err)))
   })
   notificationSocket.on('end', function () {
-    if (process.env.DEBUG) {
+    //if (process.env.DEBUG) {
       console.log('pigpio notification end received')
-    }
+    //}
   })
   notificationSocket.on('close', function () {
-    if (process.env.DEBUG) {
+    //if (process.env.DEBUG) {
       console.log('pigpio notification socket closed')
-    }
+    //}
   })
 
   /** * Public Methods ***/
