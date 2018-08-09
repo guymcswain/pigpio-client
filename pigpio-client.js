@@ -46,66 +46,113 @@ exports.pigpio = function (pi) {
   var that = new MyEmitter() // can't use prototypal inheritance
 
 // Command socket
-  var commandSocket = net.createConnection(info.port, info.host)
-  commandSocket.on('connect', cmdSockConnectHandler)
-  // 'connect' listener
-  function cmdSockConnectHandler() {
-    if (typeof info.commandSocket === 'undefined') {
-      console.log("Connecting for the first time.  Emit 'connected' event if ready.")
-      request(PIGPV, 0, 0, 0, (err, res) => {
-        info.pigpioVersion = res
-
-        request(HWVER, 0, 0, 0, (err, version) => {
-          info.hwVersion = version
-          if ((version >= 2) && (version <= 3)) {
-            info.hardware_type = 1
-            info.userGpioMask = 0x3e6cf93
-          }
-          if ((version > 4) && (version < 15)) {
-            info.hardware_type = 2
-            info.userGpioMask = 0xfbc6cf9c  // default
-          }
-          if (version > 15) {
-            info.hardware_type = 3
-            info.userGpioMask = 0xffffffc
-          }
-          info.commandSocket = true
-          if (info.notificationSocket) {
-            that.emit('connected', info)
-          }
-        })
-      })
-    }
-    else {
-      info.commandSocket = true
-      console.log('pigpio command socket reconnected')
-    }
+  var commandSocket = new net.Socket()
+  commandSocket.name = 'commandSocket'
+  commandSocket.on('connect', connectHandler(commandSocket))
+  commandSocket.reconnectHandler = reconnector(commandSocket)
+  commandSocket.disconnectHandler = disconnector(commandSocket)
+  commandSocket.addListener('error', commandSocket.reconnectHandler)
+  connect(commandSocket)
+  
+  function connect(sock) {
+    sock.removeAllListeners('error')
+    sock.addListener('error', sock.reconnectHandler)
+    sock.connect(info.port, info.host)
   }
-  commandSocket.on('error', function (err) {
-    that.emit('error', new Error('pigpio-client command socket:' + JSON.stringify(err)))
-  })
+  
+  function connectHandler(sock) {
+    var handler = function() {
+      sock.removeAllListeners('error')
+      sock.addListener('error', sock.disconnectHandler)
+      
+      if (typeof info[sock.name] === 'undefined') {
+        console.log(`${sock.name} connected`)
+      } else console.log(`${sock.name} reconnected`)
+      
+      info[sock.name] = true // indicates socket is connected
+      
+      // run the unique portion of connect handlers
+      if (sock.name === 'commandSocket') {
+        commandSocketConnectHandler()
+      }
+      if (sock.name === 'notificationSocket') {
+        notificationSocketConnectHandler() 
+      }
+      
+      if (info.commandSocket && info.notificationSocket) {
+      that.emit('connected', info)
+      console.log('pigpio-client ready')
+      }
+    }
+    return handler
+  }
+  
+  function commandSocketConnectHandler() {
+        // (re)initialize stuff
+        requestQueue = []   // flush
+        callbackQueue = []  // flush
+        // get pigpio version info then signal 'connected'
+        request(PIGPV, 0, 0, 0, (err, res) => {
+          info.pigpioVersion = res
+
+          request(HWVER, 0, 0, 0, (err, version) => {
+            info.hwVersion = version
+            if ((version >= 2) && (version <= 3)) {
+              info.hardware_type = 1
+              info.userGpioMask = 0x3e6cf93
+            }
+            if ((version > 4) && (version < 15)) {
+              info.hardware_type = 2
+              info.userGpioMask = 0xfbc6cf9c  // default
+            }
+            if (version > 15) {
+              info.hardware_type = 3
+              info.userGpioMask = 0xffffffc
+            }
+          })
+        })
+  }
+  
+  function reconnector(sock) {
+    var handler = function(e) {
+      console.log(`${sock.name} error: ${e.code}`)
+      setTimeout( () => {
+        sock.connect(info.port, info.host)
+      }, 5000)
+      console.log(`reconnect to ${sock.name} in 5 sec ...`)
+    }
+    return handler
+  }
+  
+  function disconnector(sock) {
+    var handler = function(e) {
+      sock.destroy()
+      console.log(`${sock.name} error, disconnecting`)
+      console.log('error = ' + e)
+      info[sock.name] = false // this socket no longer connected
+      // after all sockets are destroyed, alert application
+      if ( !(info.commandSocket || info.notificationSocket) ) {
+        that.emit('disconnected', `${sock.name} error`)
+        console.log('send disconnect event to application')
+      }
+    }
+    return handler
+  }
+  
   commandSocket.on('end', function () {
-    info.commandSocket = false
-    //if (process.env.DEBUG) {
       console.log('pigpio command socket end received')
-    //}
   })
+  
   commandSocket.on('close', function (had_error) {
-    info.commandSocket = false
     if (had_error) {
       console.log('pigpio command socket closed with error: ', had_error)
     }
     else {
-      console.log('pigpio command socket closed')
-    }
-    if (info.reconnection === true) {
-      setTimeout( () => {
-        commandSocket.connect(info.port, info.host)
-      }, 5000)
-      console.log('auto reconnect to pigpio in 5 seconds ...')
+      console.log('pigpio command socket closed without error')
+      if (info.commandSocket) commandSocket.disconnectHandler('called from close')
     }
   })
-
+  
   var resBuf = Buffer.allocUnsafe(0)  // see responseHandler()
 
   commandSocket.on('data', (chunk) => {
@@ -234,7 +281,16 @@ exports.pigpio = function (pi) {
   var chunklet = Buffer.allocUnsafe(0) // notify chunk fragments
   var oldLevels
 
-  var notificationSocket = net.createConnection(info.port, info.host, () => {
+  var notificationSocket = new net.Socket()
+  notificationSocket.name = 'notificationSocket'
+  notificationSocket.on('connect', connectHandler(notificationSocket))
+  notificationSocket.reconnectHandler = reconnector(notificationSocket)
+  notificationSocket.disconnectHandler = disconnector(notificationSocket)
+  notificationSocket.addListener('error', notificationSocket.reconnectHandler)
+  connect(notificationSocket)
+    
+  function notificationSocketConnectHandler() {
+    // connect handler here
     let noib = Buffer.from(new Uint32Array([NOIB, 0, 0, 0]).buffer)
     notificationSocket.write(noib, () => {
       // listener once to get handle from NOIB request
@@ -242,10 +298,7 @@ exports.pigpio = function (pi) {
         const res = new Uint32Array(resBuf)
         handle = res[3]
         if (process.env.DEBUG) { console.log('opened notification socket with handle= ' + handle) }
-        info.notificationSocket = true
-        if (info.commandSocket) {
-          that.emit('connected', info)
-        }
+
         // listener that monitors all gpio bits
         notificationSocket.on('data', function (chunk) {
           if (process.env.DEBUG) {
@@ -276,25 +329,30 @@ exports.pigpio = function (pi) {
         })
       })
     })
-  })
+  }
 
-  notificationSocket.on('error', function (err) {
-    that.emit('error', new Error('pigpio-client notification socket:' + JSON.stringify(err)))
-  })
   notificationSocket.on('end', function () {
-    //if (process.env.DEBUG) {
-      console.log('pigpio notification end received')
-    //}
+      console.log('pigpio notification socket end received')
   })
-  notificationSocket.on('close', function () {
-    //if (process.env.DEBUG) {
-      console.log('pigpio notification socket closed')
-    //}
+  
+  notificationSocket.on('close', function (had_error) {
+    if (had_error) {
+      console.log('pigpio notification socket closed with error: ', had_error)
+    }
+    else {
+      console.log('pigpio notification socket closed without error')
+      if (info.notificationSocket) notificationSocket.disconnectHandler('called from close')
+    }
   })
 
   /** * Public Methods ***/
 
   that.request = request
+  
+  that.connect = function() {
+    connect(commandSocket)
+    connect(notificationSocket)
+  }
 
 // Notifications
 //  Must **always** use 'request()' to configure/control pigpio.  Ie, don't to this:
