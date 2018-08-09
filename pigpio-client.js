@@ -454,19 +454,10 @@ exports.pigpio = function (pi) {
     // return all gpio to input mode with pull-up/down?
     // clear any waveforms?
     // other resets?
-    commandSocket.end()
-    notificationSocket.end()
-    commandSocket.on('close', () => {
-      info.commandSocket = false
-      if (!info.notificationSocket) {
-        if (typeof cb === 'function') cb()
-      }
-    })
-    notificationSocket.on('close', () => {
-      info.notificationSocket = false
-      if (!info.commandSocket) {
-        if (typeof cb === 'function') cb()
-      }
+    commandSocket.end()       // calls disconnectHandler, destroys connection.
+    notificationSocket.end()  // calls disconnectHandler, destroys connection.
+    that.once('disconnected', () => {
+      if (typeof cb === 'function') cb()
     })
   }
 
