@@ -298,7 +298,13 @@ exports.pigpio = function (pi) {
         const res = new Uint32Array(resBuf)
         handle = res[3]
         if (process.env.DEBUG) { console.log('opened notification socket with handle= ' + handle) }
-
+        
+        // Detect dead connection.  Wait 5 minutes before 'timeout'.
+        notificationSocket.setTimeout(300000, () => {
+          notificationSocket.destroy('timeout')
+          commandSocket.destroy('timeout')
+        })
+        
         // listener that monitors all gpio bits
         notificationSocket.on('data', function (chunk) {
           if (process.env.DEBUG) {
