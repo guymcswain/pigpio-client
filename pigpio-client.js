@@ -69,25 +69,30 @@ exports.pigpio = function (pi) {
         console.log(`${sock.name} connected`)
       } else console.log(`${sock.name} reconnected`)
       
-      info[sock.name] = true // indicates socket is connected
-      
       // run the unique portion of connect handlers
       if (sock.name === 'commandSocket') {
-        commandSocketConnectHandler()
+        commandSocketConnectHandler( () => {
+          info[sock.name] = true // indicates socket is connected
+          if (info.notificationSocket) {
+            that.emit('connected', info)
+            console.log('pigpio-client ready')
+          }
+        })
       }
       if (sock.name === 'notificationSocket') {
-        notificationSocketConnectHandler() 
-      }
-      
-      if (info.commandSocket && info.notificationSocket) {
-      that.emit('connected', info)
-      console.log('pigpio-client ready')
+        notificationSocketConnectHandler( () => {
+          info[sock.name] = true // indicates socket is connected
+          if (info.commandSocket) {
+            that.emit('connected', info)
+            console.log('pigpio-client ready')
+          }
+        }) 
       }
     }
     return handler
   }
   
-  function commandSocketConnectHandler() {
+  function commandSocketConnectHandler(done) {
         // (re)initialize stuff
         requestQueue = []   // flush
         callbackQueue = []  // flush
@@ -109,6 +114,7 @@ exports.pigpio = function (pi) {
               info.hardware_type = 3
               info.userGpioMask = 0xffffffc
             }
+            done()
           })
         })
   }
@@ -289,7 +295,7 @@ exports.pigpio = function (pi) {
   notificationSocket.addListener('error', notificationSocket.reconnectHandler)
   connect(notificationSocket)
     
-  function notificationSocketConnectHandler() {
+  function notificationSocketConnectHandler(done) {
     // connect handler here
     let noib = Buffer.from(new Uint32Array([NOIB, 0, 0, 0]).buffer)
     notificationSocket.write(noib, () => {
@@ -333,6 +339,7 @@ exports.pigpio = function (pi) {
             }
           }
         })
+        done() // connect handler completed callback
       })
     })
   }
