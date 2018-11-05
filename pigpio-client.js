@@ -32,6 +32,11 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c
 }
+var log = function(...args) {
+  if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
+    console.log('pigpio-client ', ...args)
+  }
+}
 /*****************************************************************************/
 exports.pigpio = function (pi) {
   var requestQueue = []
@@ -66,8 +71,8 @@ exports.pigpio = function (pi) {
       sock.addListener('error', sock.disconnectHandler)
       
       if (typeof info[sock.name] === 'undefined') {
-        console.log(`${sock.name} connected`)
-      } else console.log(`${sock.name} reconnected`)
+        log(`${sock.name} connected`)
+      } else log(`${sock.name} reconnected`)
       
       // run the unique portion of connect handlers
       if (sock.name === 'commandSocket') {
@@ -75,7 +80,7 @@ exports.pigpio = function (pi) {
           info[sock.name] = true // indicates socket is connected
           if (info.notificationSocket) {
             that.emit('connected', info)
-            console.log('pigpio-client ready')
+            log('pigpio-client ready')
           }
         })
       }
@@ -84,7 +89,7 @@ exports.pigpio = function (pi) {
           info[sock.name] = true // indicates socket is connected
           if (info.commandSocket) {
             that.emit('connected', info)
-            console.log('pigpio-client ready')
+            log('pigpio-client ready')
           }
         }) 
       }
@@ -121,11 +126,11 @@ exports.pigpio = function (pi) {
   
   function reconnector(sock) {
     var handler = function(e) {
-      console.log(`${sock.name} error: ${e.code}`)
+      log(`${sock.name} error: ${e.code}`)
       setTimeout( () => {
         sock.connect(info.port, info.host)
       }, 5000)
-      console.log(`reconnect to ${sock.name} in 5 sec ...`)
+      log(`reconnect to ${sock.name} in 5 sec ...`)
     }
     return handler
   }
@@ -133,28 +138,28 @@ exports.pigpio = function (pi) {
   function disconnector(sock) {
     var handler = function(e) {
       sock.destroy()
-      console.log(`${sock.name} error, disconnecting`)
-      console.log('error = ' + e)
+      log(`${sock.name} error, disconnecting`)
+      log('error = ' + e)
       info[sock.name] = false // this socket no longer connected
       // after all sockets are destroyed, alert application
       if ( !(info.commandSocket || info.notificationSocket) ) {
         that.emit('disconnected', `${sock.name} error`)
-        console.log('send disconnect event to application')
+        log('send disconnect event to application')
       }
     }
     return handler
   }
   
   commandSocket.on('end', function () {
-      console.log('pigpio command socket end received')
+      log('pigpio command socket end received')
   })
   
   commandSocket.on('close', function (had_error) {
     if (had_error) {
-      console.log('pigpio command socket closed with error: ', had_error)
+      log('pigpio command socket closed with error: ', had_error)
     }
     else {
-      console.log('pigpio command socket closed without error')
+      log('pigpio command socket closed without error')
       if (info.commandSocket) commandSocket.disconnectHandler('called from close')
     }
   })
@@ -204,7 +209,7 @@ exports.pigpio = function (pi) {
           }
         }
       }
-      if (process.env.DEBUG) {
+      if (process.env.PIGPIO) {
         let b = resBuf.slice(0, 16).toJSON().data
         console.log('response= ', ...b)
         if (extLen > 0) {
@@ -226,7 +231,7 @@ exports.pigpio = function (pi) {
         var req = requestQueue.shift()
         commandSocket.write(req.buffer)
         callbackQueue.push(req.callback)
-        if (process.env.DEBUG) {
+        if (process.env.PIGPIO) {
           let b = req.buffer.slice(0, 16).toJSON().data// w/o ext params!
           console.log('deferred request= ', ...b)
           if (req.buffer.length > 16) {
@@ -238,7 +243,7 @@ exports.pigpio = function (pi) {
     } // responseHandler
 
     resBuf = Buffer.concat([resBuf, chunk])
-    // if (process.env.DEBUG) {
+    // if (process.env.PIGPIO) {
     //  let b = resBuf.toJSON().data;
     //  console.log("response=\n",...b);
     // }
@@ -263,7 +268,7 @@ exports.pigpio = function (pi) {
     } else {
       commandSocket.write(buf)
       callbackQueue.push(cb)
-      if (process.env.DEBUG) {
+      if (process.env.PIGPIO) {
         let b = buf.slice(0, 16).toJSON().data // exclude extended params!
         console.log('request= ', ...b)
         if (bufSize > 16) {
@@ -303,7 +308,7 @@ exports.pigpio = function (pi) {
       notificationSocket.once('data', (resBuf) => {
         const res = new Uint32Array(resBuf)
         handle = res[3]
-        if (process.env.DEBUG) { console.log('opened notification socket with handle= ' + handle) }
+        if (process.env.PIGPIO) { log('opened notification socket with handle= ' + handle) }
         
         // Detect dead connection.  Wait 5 minutes before 'timeout'.
         notificationSocket.setTimeout(300000, () => {
@@ -313,7 +318,7 @@ exports.pigpio = function (pi) {
         
         // listener that monitors all gpio bits
         notificationSocket.on('data', function (chunk) {
-          if (process.env.DEBUG) {
+          if (process.env.PIGPIO) {
             console.log(`notification received: chunk size = ${chunk.length}`)
           }
           var buf = Buffer.concat([chunklet, chunk])
@@ -345,15 +350,15 @@ exports.pigpio = function (pi) {
   }
 
   notificationSocket.on('end', function () {
-      console.log('pigpio notification socket end received')
+      log('pigpio notification socket end received')
   })
   
   notificationSocket.on('close', function (had_error) {
     if (had_error) {
-      console.log('pigpio notification socket closed with error: ', had_error)
+      log('pigpio notification socket closed with error: ', had_error)
     }
     else {
-      console.log('pigpio notification socket closed without error')
+      log('pigpio notification socket closed without error')
       if (info.notificationSocket) notificationSocket.disconnectHandler('called from close')
     }
   })
@@ -782,7 +787,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
                 _tx.waveBusy((err, res) => {
                   if (err) throw new Error('unexpected pigpio error' + err)
                   if (res === 1) {
-                    console.log('busy! serialport timeout is too short!')
+                    log('busy! serialport timeout is too short!')
                   }
                 })
                 txBusy = false
