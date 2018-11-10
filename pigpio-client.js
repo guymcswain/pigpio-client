@@ -557,7 +557,7 @@ exports.pigpio = function (pi) {
         if (notifierID !== null) {
           that.stopNotifications(notifierID, (err, res) => {
             notifierID = null
-            cb(err, res)
+            if (typeof cb === 'function') cb(err, res)
           })
         }
       }
