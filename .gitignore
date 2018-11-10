@@ -1,8 +1,12 @@
 # ignore directories
 #test/*
 temp/*
+node_modules
 
 # ignore readme.md derived files
 *.html
 readme.pdf
 *.txt
+
+# ignore other
+package-lock.json

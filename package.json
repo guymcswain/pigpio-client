@@ -7,14 +7,15 @@
     "test": "test"
   },
   "devDependencies": {
+    "debug": "^4.1.0",
     "lorem-ipsum": "^1.0.4"
   },
   "scripts": {
-    "test": "node ./test/notifications.js && node ./test/serialport.js"
+    "test": "node ./test/regression-1.0.3.js"
   },
   "config": {
-    "host": "localhost",
-    "gpio": "25",
+    "host": "192.168.100.2",
+    "gpio": "17",
     "baud": "38400"
   },
   "keywords": [
@@ -26,5 +27,6 @@
     "type": "git",
     "url": "https://github.com/guymcswain/pigpio-client.git"
   },
-  "bugs": "https://github.com/guymcswain/pigpio-client/issues"
+  "bugs": "https://github.com/guymcswain/pigpio-client/issues",
+  "dependencies": {}
 }

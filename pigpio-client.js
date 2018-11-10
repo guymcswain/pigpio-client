@@ -1,25 +1,31 @@
 /*
- Constructor of a pigpio client object that connects with a remote raspberry
- pi and allows manipulation of its gpio pins.
+ Construct a pigpio client object that connects with a remote pigpio
+ server (pigpiod) and allows manipulation of its gpio pins.
  */
 const assert = require('assert')
 const EventEmitter = require('events')
 class MyEmitter extends EventEmitter {}
+const SIF = require('./SIF.js')
+const API = SIF.APInames
 
-// commands
-const BR1 = 10, BR2 = 11, TICK = 16, HWVER = 17, PIGPV = 26, PUD = 2, MODES = 0, MODEG = 1
-const READ = 3, WRITE = 4, PWM = 5, WVCLR = 27, WVCRE = 49, WVBSY = 32, WVAG = 28, WVCHA = 93
-const NOIB = 99, NB = 19, NP = 20, NC = 21
-const SLRO = 42, SLR = 43, SLRC = 44, SLRI = 94
-const WVTXM = 100, WVTAT = 101, WVDEL = 50, WVAS = 29
-// These command types return p3 as int32, otherwise p3 = uint32
-// ie, if (canNeverFailCmdSet.has(cmdValue)) console.log('int32')
+// pigpio supported commands:
+const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
+WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
+WVDEL, WVAS, HP, HC, GDC, PFS} = SIF.Commands
+
+// These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
+
+// These command types have extended command data lengths
 const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS])
+
+// These command types have extended response data lengths
 const extResCmdSet = new Set([SLR])
-/* other pigpio constants */
-const PUD_OFF = 0, PUD_DOWN = 1, PUD_UP = 2
-const PI_WAVE_MODE_ONE_SHOT = 0, PI_WAVE_MODE_REPEAT = 1, PI_WAVE_MODE_ONE_SHOT_SYNC = 2, PI_WAVE_MODE_REPEAT_SYNC = 3
+
+/* pigpio constants */
+const {PUD_OFF, PUD_DOWN, PUD_UP, PI_WAVE_MODE_ONE_SHOT, PI_WAVE_MODE_REPEAT,
+PI_WAVE_MODE_ONE_SHOT_SYNC, PI_WAVE_MODE_REPEAT_SYNC} = SIF.Constants
+
 var info = {
   reconnection: true,  // Todo: make default true in next semver major
   host: 'localhost',
@@ -222,7 +228,9 @@ exports.pigpio = function (pi) {
       var callback = callbackQueue.shift() // FIXME: test for queue underflow
       if (typeof callback === 'function') callback(err, p3[0], ...res)
       else {
-        if (err < 0) { that.emit('error', new Error('pigio-client res:' + p3[0] + ' cmd:' + cmd[0])) }
+        if (err < 0) {
+          that.emit('error', new Error(`pigio: ${ERR[p3[0]]}, cmd: ${API[cmd[0]]}`))
+        }
       }
       // does response buffer contain another response (potentially)?
       if (resBuf.length >= 16) responseHandler() // recurse
@@ -457,15 +465,19 @@ exports.pigpio = function (pi) {
   that.readBank1 = function (cb) {
     that.request(BR1, 0, 0, 0, cb)
   }
+  that.hwPWM = function (gpio, freq, dc, cb) {
+    that.request(HP, gpio, freq, dc, cb)
+  }
+  that.hwClock = function (gpio, freq, cb) {
+    that.request(HC, gpio, freq, 0, cb)
+  }
+  
   that.destroy = function () {
-    // Shoul only be called if an error occurs on socket
+    // Should only be called if an error occurs on socket
     commandSocket.destroy()
     notificationSocket.destroy()
   }
   that.end = function (cb) {
-    // return all gpio to input mode with pull-up/down?
-    // clear any waveforms?
-    // other resets?
     commandSocket.end()       // calls disconnectHandler, destroys connection.
     notificationSocket.end()  // calls disconnectHandler, destroys connection.
     that.once('disconnected', () => {
@@ -642,7 +654,19 @@ exports.pigpio = function (pi) {
       this.waveDelete = function (wid, cb) {
         request(WVDEL, wid, 0, 0, cb)
       }
-
+  
+  // Pulse Width Modulation
+      this.setPWMdutyCycle = function (dutyCycle, cb) { // alias of analogWrite
+        request(PWM, gpio, dutyCycle, 0, cb)
+      }
+      this.setPWMfrequency = function (freq, cb) {
+        request(PFS, gpio, freq, 0, cb)
+      }
+      this.getPWMdutyCycle = function (cb) {
+        request(GDC, gpio, 0, 0, cb)
+      }
+  
+  // Bit-Bang Serial IO
       this.serialReadOpen = function (baudRate, dataBits, callback) {
         var arrBuf = new ArrayBuffer(4)
         var dataBitsBuf = new Uint32Array(arrBuf, 0, 1)
