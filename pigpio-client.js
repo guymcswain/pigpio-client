@@ -7,6 +7,7 @@ const EventEmitter = require('events')
 class MyEmitter extends EventEmitter {}
 const SIF = require('./SIF.js')
 const API = SIF.APInames
+const ERR = SIF.PigpioErrors
 
 // pigpio supported commands:
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
@@ -85,8 +86,8 @@ exports.pigpio = function (pi) {
         commandSocketConnectHandler( () => {
           info[sock.name] = true // indicates socket is connected
           if (info.notificationSocket) {
-            that.emit('connected', info)
             log('pigpio-client ready')
+            that.emit('connected', info)
           }
         })
       }
@@ -401,20 +402,20 @@ exports.pigpio = function (pi) {
     }
     notifiers.add(nob)
 
-    // Update monitor with bits
-    monitorBits |= bits
-    // First start notification initializes the current levels (oldLevels)
-    if (typeof oldLevels === 'undefined') {
+
+    // If not currently monitoring, update the current levels (oldLevels)
+    if (monitorBits === 0) {
       request(BR1, 0, 0, 0, (err, levels) => {
-        if (err) that.emit('error', new Error(err))
+        if (err) that.emit('error', new Error('pigpio: ', ERR(err)))
         oldLevels = levels
-        request(NB, handle, monitorBits, 0)
       })
     }
-    else {
-      // send 'notifiy begin' command
-      request(NB, handle, monitorBits, 0)
-    }
+    // Update monitor with the new bits to monitor
+    monitorBits |= bits
+    
+    // start monitoring new bits
+    request(NB, handle, monitorBits, 0)
+    
     
 
     // return the callback 'id'
@@ -804,12 +805,12 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           txBusy = true
           let millis = Math.ceil(delay / 1000)
           _tx.waveCreate((err, wid) => {
-            if (err) throw new Error('unexpected pigpio error' + err)
+            if (err) throw new Error('unexpected pigpio error' + ERR(err))
             charsInPigpioBuf = 0
             _tx.waveSendOnce(wid, (err, res) => {
               setTimeout(() => {
                 _tx.waveBusy((err, res) => {
-                  if (err) throw new Error('unexpected pigpio error' + err)
+                  if (err) throw new Error('unexpected pigpio error' + ERR(err))
                   if (res === 1) {
                     log('busy! serialport timeout is too short!')
                   }
