@@ -230,7 +230,7 @@ exports.pigpio = function (pi) {
       if (typeof callback === 'function') callback(err, p3[0], ...res)
       else {
         if (err < 0) {
-          that.emit('error', new Error(`pigio: ${ERR[p3[0]]}, cmd: ${API[cmd[0]]}`))
+          that.emit('error', new Error(`pigio: ${ERR[p3[0]].message}, cmd: ${API[cmd[0]]}`))
         }
       }
       // does response buffer contain another response (potentially)?
@@ -406,7 +406,7 @@ exports.pigpio = function (pi) {
     // If not currently monitoring, update the current levels (oldLevels)
     if (monitorBits === 0) {
       request(BR1, 0, 0, 0, (err, levels) => {
-        if (err) that.emit('error', new Error('pigpio: ', ERR(err)))
+        if (err) that.emit('error', new Error('pigpio: ', ERR[err].message))
         oldLevels = levels
       })
     }
@@ -805,12 +805,12 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           txBusy = true
           let millis = Math.ceil(delay / 1000)
           _tx.waveCreate((err, wid) => {
-            if (err) throw new Error('unexpected pigpio error' + ERR(err))
+            if (err) throw new Error('unexpected pigpio error' + ERR[err].message)
             charsInPigpioBuf = 0
             _tx.waveSendOnce(wid, (err, res) => {
               setTimeout(() => {
                 _tx.waveBusy((err, res) => {
-                  if (err) throw new Error('unexpected pigpio error' + ERR(err))
+                  if (err) throw new Error('unexpected pigpio error' + ERR[err].message)
                   if (res === 1) {
                     log('busy! serialport timeout is too short!')
                   }
