@@ -8,7 +8,8 @@
   },
   "devDependencies": {
     "debug": "^4.1.0",
-    "lorem-ipsum": "^1.0.4"
+    "lorem-ipsum": "^1.0.4",
+    "nested-error-stacks": "^2.1.0"
   },
   "scripts": {
     "test": "node ./test/regression-1.0.3.js"

@@ -1,7 +1,10 @@
 # ignore directories
-#test/*
+test/*
 temp/*
 node_modules
+
+# but include these files
+!test/regression-1.0.3.js
 
 # ignore readme.md derived files
 *.html
