@@ -5,6 +5,7 @@
 const assert = require('assert')
 const EventEmitter = require('events')
 class MyEmitter extends EventEmitter {}
+const util = require('util')
 const SIF = require('./SIF.js')
 const API = SIF.APInames
 const ERR = SIF.PigpioErrors
@@ -67,7 +68,7 @@ exports.pigpio = function (pi) {
   commandSocket.addListener('error', commandSocket.reconnectHandler)
   commandSocket.addListener('close', commandSocket.closeHandler)
   connect(commandSocket)
-  
+
   function startRetryTimer(sock) {
     if (info.timeout) {
       sock.retryTimer = setTimeout( () => {
@@ -79,11 +80,11 @@ exports.pigpio = function (pi) {
         log(`${sock.name} retry timeout`)
         // hack: we don't want two error events
         if (sock.name === 'commandSocket')
-          that.emit('error', new Error('Could not connect, retry timeout expired'))
+          that.emit('error', new MyError('Could not connect, retry timeout expired'))
       }, info.timeout * 60 * 1000)
     }
   }
-  
+
   function connect(sock) {
     startRetryTimer(sock)
     // Fixme: is this necessary?
@@ -93,24 +94,24 @@ exports.pigpio = function (pi) {
     //}
     sock.connect(info.port, info.host)
   }
-  
+
   function stopRetryTimer(sock) {
     if (sock.retryTimer) {
       clearTimeout(sock.retryTimer)
       sock.retryTimer = null
     }
   }
-  
+
   function connectHandler(sock) {
     var handler = function() {
       stopRetryTimer(sock)
       //sock.removeAllListeners('error')
       //sock.addListener('error', sock.disconnectHandler)
-      
+
       if (typeof info[sock.name] === 'undefined') {
         log(`${sock.name} connected`)
       } else log(`${sock.name} reconnected`)
-      
+
       // run the unique portion of connect handlers
       if (sock.name === 'commandSocket') {
         commandSocketConnectHandler( () => {
@@ -128,12 +129,12 @@ exports.pigpio = function (pi) {
             that.emit('connected', info)
             log('pigpio-client ready')
           }
-        }) 
+        })
       }
     }
     return handler
   }
-  
+
   function commandSocketConnectHandler(done) {
         // (re)initialize stuff
         requestQueue = []   // flush
@@ -186,43 +187,43 @@ exports.pigpio = function (pi) {
     }
     return handler
   }
-  
+
   commandSocket.on('end', function () {
       log('pigpio command socket end received')
   })
-  
+
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
       if ( e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH'
                 || (e.code === 'ECONNRESET' ) && sock.connecting) {
-        if (sock.retryTimer) {  
+        if (sock.retryTimer) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
           log(`retry connection on ${sock.name} in 5 sec ...`)
         }
       }
-      
+
       else if ( e.code === 'ECONNRESET' && !sock.connecting ) {
         return sock.disconnectHandler(`${sock.name} ECONNRESET, disconnecting`)
       }
-      
+
       else {
         // On any other error, throw
         // socket.destroy(error) is caught here as well?
-        that.emit('error', new Error('Unhandled socket error, '+e.message))
+        that.emit('error', new MyError('Unhandled socket error, '+e.message))
       }
     }
     return handler
   }
-  
+
   function returnCloseHandler(sock) {
     var handler = function (had_error) {
       if (had_error) {
         log(`${sock.name} closed on error`)
       }
-      
+
       // Close event without error indicates peer has closed connection.  We must
       // disconnect in this case since the state of pigpiod may have changed.
       else {
@@ -232,7 +233,7 @@ exports.pigpio = function (pi) {
     }
     return handler
   }
-  
+
   var resBuf = Buffer.allocUnsafe(0)  // see responseHandler()
 
   commandSocket.on('data', (chunk) => {
@@ -278,6 +279,19 @@ exports.pigpio = function (pi) {
           }
         }
       }
+      // prepare the error object -> FIXME, create an error subclass?
+      let error = null
+      if (err) {
+        error = new MyError({
+          name: "pigpio",
+          code: ERR[err].code,
+          message: ERR[err].message,
+          api: API[cmd[0]]
+        })
+        //error.code = ERR[err].code
+        //error.message = `${ERR[err].message}, api: ${API[cmd[0]]}`
+      }
+
       if (process.env.PIGPIO) {
         let b = resBuf.slice(0, 16).toJSON().data
         console.log('response= ', ...b)
@@ -289,10 +303,10 @@ exports.pigpio = function (pi) {
       resBuf = resBuf.slice(extLen + 16) // leave remainder for later processing
       // process the response callback
       var callback = callbackQueue.shift() // FIXME: test for queue underflow
-      if (typeof callback === 'function') callback(err, p3[0], ...res)
+      if (typeof callback === 'function') callback(error, p3[0], ...res)
       else {
-        if (err < 0) {
-          that.emit('error', new Error(`pigio: ${ERR[p3[0]].message}, cmd: ${API[cmd[0]]}`))
+        if (error) {
+          that.emit('error', error)
         }
       }
       // does response buffer contain another response (potentially)?
@@ -372,7 +386,7 @@ exports.pigpio = function (pi) {
   notificationSocket.closeHandler = returnCloseHandler(notificationSocket)
   notificationSocket.addListener('close', notificationSocket.closeHandler)
   connect(notificationSocket)
-    
+
   function notificationSocketConnectHandler(done) {
     // connect handler here
     let noib = Buffer.from(new Uint32Array([NOIB, 0, 0, 0]).buffer)
@@ -382,7 +396,7 @@ exports.pigpio = function (pi) {
         const res = new Uint32Array(resBuf)
         handle = res[3]
         if (process.env.PIGPIO) { log('opened notification socket with handle= ' + handle) }
-        
+
         // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
           // generate an (custom) error exception on the socket(s)
@@ -392,7 +406,7 @@ exports.pigpio = function (pi) {
           notificationSocket.disconnectHandler('timeout')
           commandSocket.disconnectHandler('timeout')
         })
-        
+
         // listener that monitors all gpio bits
         notificationSocket.on('data', function (chunk) {
           if (process.env.PIGPIO) {
@@ -429,7 +443,7 @@ exports.pigpio = function (pi) {
   notificationSocket.on('end', function () {
       log('pigpio notification socket end received')
   })
-/*  
+/*
   notificationSocket.on('close', function (had_error) {
     if (had_error) {
       log('pigpio notification socket closed with error: ', had_error)
@@ -443,7 +457,7 @@ exports.pigpio = function (pi) {
   /** * Public Methods ***/
 
   that.request = request
-  
+
   that.connect = function() {
     connect(commandSocket)
     connect(notificationSocket)
@@ -458,7 +472,10 @@ exports.pigpio = function (pi) {
   var monitorBits = 0
   that.startNotifications = function (bits, cb) {
     if (notifiers.size === MAX_NOTIFICATIONS) {
-      that.emit('error', new Error('Notification limit reached, cannot add this notifier'))
+      let error = new MyError('Notification limit reached, cannot add this notifier')
+      error.code = 'PI_CLIENT_NOTIFICATION_LIMIT'
+      //that.emit('error', new Error('Notification limit reached, cannot add this notifier'))
+      that.emit('error', error)
       return null
     }
 
@@ -474,17 +491,22 @@ exports.pigpio = function (pi) {
     // If not currently monitoring, update the current levels (oldLevels)
     if (monitorBits === 0) {
       request(BR1, 0, 0, 0, (err, levels) => {
-        if (err) that.emit('error', new Error('pigpio: ', ERR[err].message))
+        if (err) {
+          //that.emit('error', new Error('pigpio: ', ERR[err].message))
+          let error = new MyError('internal pigpio error: ' +ERR[err].message)
+          error.code = ERR[err].code
+          that.emit('error', error)
+        }
         oldLevels = levels
       })
     }
     // Update monitor with the new bits to monitor
     monitorBits |= bits
-    
+
     // start monitoring new bits
     request(NB, handle, monitorBits, 0)
-    
-    
+
+
 
     // return the callback 'id'
     return nob.id
@@ -540,7 +562,7 @@ exports.pigpio = function (pi) {
   that.hwClock = function (gpio, freq, cb) {
     that.request(HC, gpio, freq, 0, cb)
   }
-  
+
   that.destroy = function () {
     // Should only be called if an error occurs on socket
     commandSocket.destroy()
@@ -560,24 +582,27 @@ exports.pigpio = function (pi) {
     var _gpio = function (gpio) {
       var modeSet = function (gpio, mode, callback) {
         if (typeof gpio !== 'number' || typeof mode !== 'string') {
-          throw new Error('TypeError: pigpio.modeSet argument types are number and string')
+          throw new MyError('TypeError: gpio.modeSet argument must be number or string')
         }
         if (!that.isUserGpio(gpio)) {
-          throw new Error('PigpioError: pigpio.modeSet gpio argument is not user gpio')
+          throw new MyError({
+            message: 'gpio argument is not a valid user gpio',
+            api: 'modeSet'
+          })
         }
         var m = /^outp?u?t?/.test(mode) ? 1 : /^inp?u?t?/.test(mode) ? 0 : undefined
         if (m === undefined) {
-          throw new Error('pigpio.modeSet: invalid mode string')
+          throw new MyError('gpio.modeSet: invalid mode string')
         }
         request(MODES, gpio, m, 0, callback)
       }
 
       var pullUpDown = function (gpio, pud, callback) {
         if (typeof gpio !== 'number' || typeof pud !== 'number') {
-          throw new Error('TypeError: pigpio.pullUpDown argument is not a number')
+          throw new MyError('gpio.pullUpDown argument is not a number')
         }
         if (!that.isUserGpio(gpio)) {
-          throw new Error('PigpioError: pigpio.pullUpDown gpio argument is not user gpio')
+          throw new MyError('gpio.pullUpDown argument is not valid user gpio')
         }
       // Assume pigpio library handles range error on pud argument!
         request(PUD, gpio, pud, 0, callback)
@@ -589,7 +614,7 @@ exports.pigpio = function (pi) {
       this.write = function (level, callback) {
         if ((+level >= 0) && (+level <= 1)) {
           request(WRITE, gpio, +level, 0, callback)
-        } else throw new Error('pigpio.write error: bad gpio or level')
+        } else throw new MyError('gpio.write level argument must be numeric 0 or 1')
       }
       this.read = function (callback) {
         request(READ, gpio, 0, 0, callback)
@@ -607,7 +632,7 @@ exports.pigpio = function (pi) {
       this.notify = function (callback) {
       // only allow one notifier per gpio object
         if (notifierID !== null) {
-          that.emit('error', new Error('Notifier already registered for this gpio.'))
+          that.emit('error', new MyError('Notifier already registered for this gpio.'))
           return
         }
 
@@ -723,7 +748,7 @@ exports.pigpio = function (pi) {
       this.waveDelete = function (wid, cb) {
         request(WVDEL, wid, 0, 0, cb)
       }
-  
+
   // Pulse Width Modulation
       this.setPWMdutyCycle = function (dutyCycle, cb) { // alias of analogWrite
         request(PWM, gpio, dutyCycle, 0, cb)
@@ -734,7 +759,7 @@ exports.pigpio = function (pi) {
       this.getPWMdutyCycle = function (cb) {
         request(GDC, gpio, 0, 0, cb)
       }
-  
+
   // Bit-Bang Serial IO
       this.serialReadOpen = function (baudRate, dataBits, callback) {
         var arrBuf = new ArrayBuffer(4)
@@ -791,6 +816,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
       _tx.write(1)
       _dtr.modeSet('output')
       _dtr.write(1)
+
       this.open = function (baudrate, databits, callback) {
         baud = baudrate || 9600
         baud = (baud < 49 < 250001) ? baud : 0
@@ -799,15 +825,38 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         if (baud > 0 && bits > 0) {
         // initialize rx
           _rx.serialReadOpen(baud, bits, (err) => {
-            if (err === -50) {
-            // if err is -50 we may have crashed without closing
-              _rx.serialReadClose() // close it and try again
+            if (err && err.code === 'PI_GPIO_IN_USE') {
+              log("PI_GPIO_IN_USE, try close then re-open")
+              _rx.serialReadClose((err) => {
+                if (err) {
+                  log("something is wrong on retry open serial port")
+                  isOpen = false
+                  if (callback && typeof callback === 'function')
+                    callback(createSPError(err), false)
+                  else that.emit(createSPError(err))
+                }
+                else _rx.serialReadOpen(baud, bits, (err) => {
+                  log("retrying open, abort on error")
+                  if (err) throw(createSPError(err))
+                  log("retry success")
+                  isOpen = true
+                  if (dtr !== tx) {
+                  // pulse dtr pin to reset Arduino
+                    _dtr.write(0, () => {
+                      setTimeout(() => { _dtr.write(1) }, 10)
+                    })
+                  }
+                  if (callback && typeof callback === 'function')
+                    callback(null, true)
+                })
+              })
+            } else if (err) { // unexpected error on open
               isOpen = false
-              callback('port in use, closing, try again')
-            } else if (err) {
-              isOpen = false
-              callback('Error opening serialport: ' + err)
-            } else { // serial rx is open
+              if (callback && typeof callback === 'function')
+                callback(createSPError(err), false)
+              else that.emit(createSPError(err))
+            } else {
+              // normal success
               isOpen = true
               if (dtr !== tx) {
               // pulse dtr pin to reset Arduino
@@ -815,17 +864,18 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
                   setTimeout(() => { _dtr.write(1) }, 10)
                 })
               }
-              callback(null)
+              if (callback && typeof callback === 'function')
+                callback(null, true)
             }
           })
         // initialize tx
           _tx.waveClear()
-        // request(53,0,0,0);  // init new wave
         } else {
           isOpen = false
-          callback('Error: invalid arguments')
+          throw(createSPError('Invalid baudrate or databits argument'))
         }
       }
+
       this.read = function (size, cb) {
         let count, callb
         if (typeof size === 'function') {
@@ -841,7 +891,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
   // in the internal buffer will be returned.
           _rx.serialRead(count, (err, len, ...bytes) => {
             if (err) {
-              callb(err)
+              callb(createSPError(err))
             } else if (len === 0) {
               callb(null, null)
             } else {
@@ -851,7 +901,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           })
         } else callb(null)
       }
-
+  // To forestall data corruption, throw on error since we don't have callback.
       this.write = function (data) {
         if (isOpen === false) {
           return -1
@@ -861,8 +911,8 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         }
         charsInPigpioBuf += data.length
         _tx.waveAddSerial(baud, bits, delay, data, (err, res) => {
-          if (err) throw new Error('unexpected pigpio error' + err)
-         
+          if (err)
+            throw(createSPError(err))
         })
         delay += Math.ceil(((data.length + 1) * (bits + 2) / baud) * 1000000)
         if (!txBusy) {
@@ -873,23 +923,25 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           txBusy = true
           let millis = Math.ceil(delay / 1000)
           _tx.waveCreate((err, wid) => {
-            if (err) throw new Error('unexpected pigpio error' + ERR[err].message)
+            if (err) throw(createSPError(err))
             charsInPigpioBuf = 0
             _tx.waveSendOnce(wid, (err, res) => {
+              if (err) throw(createSPError(err))
               setTimeout(() => {
                 _tx.waveBusy((err, res) => {
-                  if (err) throw new Error('unexpected pigpio error' + ERR[err].message)
+                  if (err) throw(createSPError(err))
                   if (res === 1) {
                     log('busy! serialport timeout is too short!')
                   }
                 })
                 txBusy = false
-              
+
               // clean up, recycle wids
                 _tx.waveDelete(wid, (err) => {
+                  if (err) throw(createSPError(err))
                   if (delay) sendSerial()
                 })
-                
+
               }, millis)
             })
           })
@@ -900,17 +952,31 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 
       this.close = function (callback) {
         if (isOpen) {
-          _rx.serialReadClose(() => {
-            isOpen = false
-            if (callback) callback()
+          isOpen = false
+          _rx.serialReadClose((err) => {
+            if(err && err.code === 'PI_NOT_SERIAL_GPIO')
+              log('Serial read is already closed: '+err.message)
+            else if (err) if (callback && typeof callback === 'function')
+                               callback(createSPError(err))
+                          else that.emit(createSPError(err))
           })
-        } else if (callback) callback()
+        }
+        if (typeof callback === 'function') callback(null, 0)
       }
       this.end = function (callback) {
-        _rx.serialReadClose(() => {
-          _tx.modeSet('input', () => { // end()
-            _dtr.modeSet('input', () => { // end()
-        // _serialport = undefined; // ready for garbage collection???
+        this.close((err) => {
+          if (err) if (callback && typeof callback === 'function')
+                        callback(createSPError(err))
+                   else that.emit(createSPError(err))
+          _tx.modeSet('in', (err) => {
+            if (err)  if (callback && typeof callback === 'function')
+                           callback(createSPError(err))
+                      else that.emit(createSPError(err))
+            _dtr.modeSet('input', (err) => {
+              if (err) if (callback && typeof callback === 'function')
+                            callback(createSPError(err))
+                       else that.emit(createSPError(err))
+              // success, finally!
               if (typeof callback === 'function') {
                 callback()
               }
@@ -919,6 +985,14 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         })
       }
     }// _serialport()
+
+    function createSPError(err) {
+      return new MyError( { name: 'pigpio-client',
+                            api: 'serial.write',
+                            code: (typeof err === 'string')? 'PI_CLIENT' : err.code,
+                            message: (typeof err === 'string')? err : err.message
+      })
+    }
 
   // check gpio pins are valid and (todo) available
     if (!(that.isUserGpio(rx) && that.isUserGpio(tx) && that.isUserGpio(dtr))) {
@@ -929,3 +1003,15 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
   }// pigpio serialport constructor
   return that
 }// pigpio constructor
+
+function MyError(settings, context) {
+  settings = settings || {}
+  if (typeof settings === 'string')
+    settings = {message: settings}
+  this.name = settings.name || "pigpio_client"
+  this.code = settings.code || "PI_CLIENT"
+  this.message = settings.message || "An error occurred"
+  this.api = settings.api || ""
+  Error.captureStackTrace(this, context || MyError)
+}
+util.inherits(MyError, Error)
