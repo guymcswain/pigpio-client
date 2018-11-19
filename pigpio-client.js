@@ -804,7 +804,7 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
 */
   that.serialport = function (rx, tx, dtr) {
     var _serialport = function (rx, tx, dtr) {
-      var baud, bits, delay = 0, isOpen = false, current_wid = null, next_wid, txBusy = false, charsInPigpioBuf = 0
+      var baud, bits, isOpen=false, txBusy=false, maxChars, buffer=''
       var _rx = new that.gpio(rx)
       var _tx
       if (tx === rx) { // loopback mode
@@ -817,78 +817,94 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
       _dtr.modeSet('output')
       _dtr.write(1)
 
-      this.open = function (baudrate, databits, callback) {
+      this.open = function (baudrate, databits, cb) {
+        if (cb) assert(typeof cb === 'function',
+            "argument 'cb' must be a function")
         baud = baudrate || 9600
-        baud = (baud < 49 < 250001) ? baud : 0
+        assert(typeof baud === 'number', "argument 'baud' must be a number")
+        assert(!isNaN(baud) && baud > 49 && baud < 250001,
+            "argument 'baud' must be a positive number between 50 and 250000")
         bits = databits || 8
-        bits = (bits < 0 < 33) ? bits : 0
-        if (baud > 0 && bits > 0) {
+        assert(typeof bits === 'number', "argument 'dataBits' must be a number")
+        assert(!isNaN(bits) && bits > 0 && bits < 33,
+            "argument 'dataBits' must be a positive number between 1 and 32")
+          
         // initialize rx
-          _rx.serialReadOpen(baud, bits, (err) => {
-            if (err && err.code === 'PI_GPIO_IN_USE') {
-              log("PI_GPIO_IN_USE, try close then re-open")
-              _rx.serialReadClose((err) => {
-                if (err) {
-                  log("something is wrong on retry open serial port")
-                  isOpen = false
-                  if (callback && typeof callback === 'function')
-                    callback(createSPError(err), false)
-                  else that.emit(createSPError(err))
-                }
-                else _rx.serialReadOpen(baud, bits, (err) => {
-                  log("retrying open, abort on error")
-                  if (err) throw(createSPError(err))
-                  log("retry success")
-                  isOpen = true
-                  if (dtr !== tx) {
-                  // pulse dtr pin to reset Arduino
-                    _dtr.write(0, () => {
-                      setTimeout(() => { _dtr.write(1) }, 10)
-                    })
-                  }
-                  if (callback && typeof callback === 'function')
-                    callback(null, true)
-                })
-              })
-            } else if (err) { // unexpected error on open
-              isOpen = false
-              if (callback && typeof callback === 'function')
-                callback(createSPError(err), false)
-              else that.emit(createSPError(err))
-            } else {
-              // normal success
-              isOpen = true
-              if (dtr !== tx) {
-              // pulse dtr pin to reset Arduino
-                _dtr.write(0, () => {
-                  setTimeout(() => { _dtr.write(1) }, 10)
-                })
+        _rx.serialReadOpen(baud, bits, (err) => {
+          if (err && err.code === 'PI_GPIO_IN_USE') {
+            log("PI_GPIO_IN_USE, try close then re-open")
+            _rx.serialReadClose((err) => {
+              if (err) {
+                log("something is wrong on retry open serial port")
+                isOpen = false
+                if (cb)
+                  cb(createSPError(err), false)
+                else that.emit(createSPError(err))
               }
-              if (callback && typeof callback === 'function')
-                callback(null, true)
+              else _rx.serialReadOpen(baud, bits, (err) => {
+                log("retrying open, abort on error")
+                if (err) throw(createSPError(err))
+                log("retry success")
+                isOpen = true
+                if (dtr !== tx) {
+                // pulse dtr pin to reset Arduino
+                  _dtr.write(0, () => {
+                    setTimeout(() => { _dtr.write(1) }, 10)
+                  })
+                }
+                if (cb)
+                  cb(null, true)
+              })
+            })
+          } else if (err) { // unexpected error on open
+            isOpen = false
+            if (cb)
+              cb(createSPError(err), false)
+            else that.emit(createSPError(err))
+          } else {
+            // normal success
+            isOpen = true
+            if (dtr !== tx) {
+            // pulse dtr pin to reset Arduino
+              _dtr.write(0, () => {
+                setTimeout(() => { _dtr.write(1) }, 10)
+              })
             }
-          })
+            if (cb)
+              cb(null, true)
+          }
+        })
+        
         // initialize tx
-          _tx.waveClear()
-        } else {
-          isOpen = false
-          throw(createSPError('Invalid baudrate or databits argument'))
-        }
+        _tx.waveClear((err) => {
+          if (err) throw(createSPError(err))
+          that.request(35, 2, 0, 0, (err, maxPulses) => {
+            maxChars = maxPulses / (bits + 2)
+            log('maxChars = ', maxChars)
+          })
+        })
       }
 
+    /*
+     * Read from serialport.  Arguments:
+     *
+     *  size  A number representing the number of bytes to read.  Size is optional.
+     *        If not specified, all the data in the buffer is returned (<=8192).
+     *
+     *  cb    On success, invoked as cb(null, data) where 'data' is a string.
+     *        On failure, invoked as cb(err) where 'err' is a PigpioError
+     *        object.
+    */
       this.read = function (size, cb) {
         let count, callb
         if (typeof size === 'function') {
           callb = size
-          count = 1200
+          count = 8192
         } else {
           callb = cb
-          count = size || 1 // must read at least a byte at a time
+          count = size || 8192 // must read at least a byte at a time
         }
         if (isOpen) {
-        // Todo: implement readable.read() like.  For now just use callback.
-  // If the size argument is not specified, all of the data contained
-  // in the internal buffer will be returned.
           _rx.serialRead(count, (err, len, ...bytes) => {
             if (err) {
               callb(createSPError(err))
@@ -896,58 +912,57 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
               callb(null, null)
             } else {
               let buf = Buffer.from(bytes)
-              callb(null, buf)
+              callb(null, ""+buf) // coerce to string
             }
           })
         } else callb(null)
       }
-  // To forestall data corruption, throw on error since we don't have callback.
+      
       this.write = function (data) {
-        if (isOpen === false) {
+      /*  Saves data, coerced to utf8 string, to a buffer then sends chunks of
+       *  of size 'maxChars' to waveAddSerial().  Returns the size (>=0) of buffer.
+       *  If the serial port is not open, returns -1.  
+       *  Pigpio errors will be thrown to limit possible data corruption.
+      */
+        if (isOpen === false)
           return -1
-        }
-        if (data.length > (1200 - charsInPigpioBuf)) {
-          return null
-        }
-        charsInPigpioBuf += data.length
-        _tx.waveAddSerial(baud, bits, delay, data, (err, res) => {
-          if (err)
-            throw(createSPError(err))
-        })
-        delay += Math.ceil(((data.length + 1) * (bits + 2) / baud) * 1000000)
-        if (!txBusy) {
-          sendSerial()
-        }
-
-        function sendSerial () {
-          txBusy = true
-          let millis = Math.ceil(delay / 1000)
-          _tx.waveCreate((err, wid) => {
+        
+        buffer += data  // fast concatenation with coercion to string type
+        if (txBusy)
+          return buffer.length
+        
+        let chunk = buffer.slice(0, maxChars) // computed in serialport.open()
+        buffer = buffer.slice(chunk.length)
+        txBusy = true
+        if (chunk) send(chunk)
+        return buffer.length
+        
+        function send(data) {
+          log('serialport sending data ', data.length)
+          _tx.waveAddSerial(baud, bits, 0, data, (err) => {
             if (err) throw(createSPError(err))
-            charsInPigpioBuf = 0
-            _tx.waveSendOnce(wid, (err, res) => {
+            _tx.waveCreate( (err, wid)=> {
               if (err) throw(createSPError(err))
-              setTimeout(() => {
-                _tx.waveBusy((err, res) => {
-                  if (err) throw(createSPError(err))
-                  if (res === 1) {
-                    log('busy! serialport timeout is too short!')
-                  }
-                })
-                txBusy = false
-
-              // clean up, recycle wids
-                _tx.waveDelete(wid, (err) => {
-                  if (err) throw(createSPError(err))
-                  if (delay) sendSerial()
-                })
-
-              }, millis)
+              _tx.waveSendOnce(wid, (err) => {
+                if (err) throw(createSPError(err))
+                setTimeout(() => {
+                  _tx.waveNotBusy(1, () => {
+                    _tx.waveDelete(wid, (err) => {
+                      if (err) throw(createSPError(err))
+                      if (buffer) {
+                        chunk = buffer.slice(0, maxChars)
+                        buffer = buffer.slice(chunk.length)
+                        send(chunk)
+                      }
+                      else 
+                        txBusy = false
+                    })
+                  })
+                }, Math.ceil((data.length+1) * 10 * 1000 / baud))
+              })
             })
           })
-          delay = 0
         }
-        return data.length
       }
 
       this.close = function (callback) {

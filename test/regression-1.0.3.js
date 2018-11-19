@@ -489,9 +489,10 @@ function testWaves() {
 function testSerialport() {
 // Serialport
   return new Promise( async(resolve, reject) => {
-    const BUF = Buffer.from("Hello, I love you, won't you tell me your name?")
+    
     const LoremIpsum = require('lorem-ipsum')
     const LOREMIPSUM = LoremIpsum({count: 100, units: 'sentences'})
+    const BUF = Buffer.from(LOREMIPSUM)
     const BAUDRATE = parseInt(process.env.npm_package_config_baud, 10)
     const DATABITS = 8
     
@@ -509,9 +510,6 @@ function testSerialport() {
       
       let mode = await gpio.modeGetAsync()
       assert.strictEqual(mode, 1, "tx incorrect mode")
-/* FIXME sp.open leaves incorrect isOpen status when err===-50 (I think) */      
-      //try { await gpio.serialReadCloseAsync() }
-      //catch(e) { debug(e.message)}
       
       debug('open serialport')
       let spStatus
@@ -530,44 +528,39 @@ function testSerialport() {
       debug("check the serial read buffer is clear")
       assert.strictEqual(await sp.readAsync(), null, "sp read buffer not cleared")
       
-      debug('Part 1) send BUF in small (8 char) chuncks')
+      debug('Part 1) send words as Buffer in small chunks (8 chars)')
       //await sp.closeAsync() // uncomment to fail while loop assertion
       let count = 0 
-      while (count !== BUF.length) {
-        count += sp.write(BUF.slice(count, count+8))
-        /* If serialport is not open, sp.write return -1 */     
-        assert.strictEqual(count >= 0, true, "failed to write to serialport")
+      while (count <= BUF.length) {
+        sp.write(BUF.slice(count, count+8))
+        count += 8
+        await sleep(1)
       }
       
       debug('read back serial data and compare result')
-      let wdog = setTimeout(()=> {throw("SP timeout #1 reading")}, 1000)
-      let result = Buffer.from("")
+      let wdog = setTimeout(()=> {throw("SP timeout #1 reading")}, 2000)
+      let result = ""
       while (result.length < BUF.length) {
         let res = await sp.readAsync()
-        // res is buffer or null
-        if (res) result = Buffer.concat([result, res])
+        if (res) result += res  //= Buffer.concat([result, res])
       }
       clearTimeout(wdog)
-      assert.strictEqual(BUF.compare(result), 0, 'SP read #1 failed, result='+result.toString())
+      assert.strictEqual(LOREMIPSUM, result, 0, 'SP read #1 failed, result='+result)
       
-      debug('Part 2) send words at max chunk size (1200 chars)')
-      count = 0
-      while (count !== LOREMIPSUM.length) {
-        count += sp.write(LOREMIPSUM.slice(count, count+1200))
-        await sleep(100)
-      }
-      
+      debug('Part 2) send words as string, no chunking')
+      sp.write(LOREMIPSUM)
+
       debug('read back and compare')
       wdog = setTimeout(()=> {throw("SP timeout #2 reading")},
-                      LOREMIPSUM.length * (DATABITS + 2) * 1000 / BAUDRATE + 20)
-      result = Buffer.from("")
+                 (LOREMIPSUM.length+1) * (DATABITS + 2) * 1000 / BAUDRATE + 200)
+      result = ""
       while (result.length < LOREMIPSUM.length) {
         let res = await sp.readAsync()
-        //assert.strictEqual(res >= 0, true, res.message)
-        if (res) result = Buffer.concat([result, res])
+        if (res) result += res
       }
       clearTimeout(wdog)
-      assert.strictEqual(Buffer.from(LOREMIPSUM).compare(result), 0, 'SP read #2 failed')
+      assert.strictEqual(LOREMIPSUM, result.toString(), 0, 
+          'SP read #2 failed')
       
       debug('close sp, verify tx mode is still output')
       await sp.closeAsync()
