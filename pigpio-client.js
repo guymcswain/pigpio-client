@@ -535,9 +535,10 @@ exports.pigpio = function (pi) {
     request(NC, handle, 0, 0, cb)
   }
 
-  that.isUserGpio = function (gpio) {
+  var isUserGpio = function (gpio) {
     return !!(((1 << gpio) & info.userGpioMask))
   }
+
   that.getInfo = function () {
     return (`connected pigpiod info:
 \thost : ${info.host}
@@ -579,32 +580,20 @@ exports.pigpio = function (pi) {
 /* ___________________________________________________________________________ */
 
   that.gpio = function (gpio) {
+    
     var _gpio = function (gpio) {
+      assert(typeof gpio === 'number' && isUserGpio(gpio),
+          "Argument 'gpio' is not a user GPIO.")
       var modeSet = function (gpio, mode, callback) {
-        if (typeof gpio !== 'number' || typeof mode !== 'string') {
-          throw new MyError('TypeError: gpio.modeSet argument must be number or string')
-        }
-        if (!that.isUserGpio(gpio)) {
-          throw new MyError({
-            message: 'gpio argument is not a valid user gpio',
-            api: 'modeSet'
-          })
-        }
-        var m = /^outp?u?t?/.test(mode) ? 1 : /^inp?u?t?/.test(mode) ? 0 : undefined
-        if (m === undefined) {
-          throw new MyError('gpio.modeSet: invalid mode string')
-        }
+        assert(typeof mode === 'string', "Argument 'mode' must be string.")
+        let m = /^outp?u?t?/.test(mode) ? 1 : /^inp?u?t?/.test(mode) ? 0 : undefined
+        assert(m !== undefined, "Argument 'mode' is not a valid string.")
         request(MODES, gpio, m, 0, callback)
       }
 
       var pullUpDown = function (gpio, pud, callback) {
-        if (typeof gpio !== 'number' || typeof pud !== 'number') {
-          throw new MyError('gpio.pullUpDown argument is not a number')
-        }
-        if (!that.isUserGpio(gpio)) {
-          throw new MyError('gpio.pullUpDown argument is not valid user gpio')
-        }
-      // Assume pigpio library handles range error on pud argument!
+        assert(typeof pud === 'number', "Argument 'pud' is not a number.")
+      // Rely on pigpio library to range check pud argument.
         request(PUD, gpio, pud, 0, callback)
       }
 
@@ -612,9 +601,11 @@ exports.pigpio = function (pi) {
       this.modeSet = function (...args) { modeSet(gpio, ...args) }
       this.pullUpDown = function (...args) { pullUpDown(gpio, ...args) }
       this.write = function (level, callback) {
-        if ((+level >= 0) && (+level <= 1)) {
+        assert(typeof level === 'number' && (level === 0 || level === 1),
+          "Argument 'level' must be numeric 0 or 1")
+        //if ((+level >= 0) && (+level <= 1)) {
           request(WRITE, gpio, +level, 0, callback)
-        } else throw new MyError('gpio.write level argument must be numeric 0 or 1')
+        //} else throw new MyError('gpio.write level argument must be numeric 0 or 1')
       }
       this.read = function (callback) {
         request(READ, gpio, 0, 0, callback)
@@ -777,7 +768,7 @@ exports.pigpio = function (pi) {
         var flag
         if (mode === 'invert') flag = 1
         if (mode === 'normal') flag = 0
-        assert(typeof flag !== 'undefined')
+        assert(typeof flag !== 'undefined', "Argument 'mode' is invalid.")
         request(SLRI, gpio, flag, 0, callback)
       }
       this.waveAddSerial = function (baud, bits, delay, data, callback) {
@@ -793,29 +784,39 @@ exports.pigpio = function (pi) {
     return new _gpio(gpio)
   }// that.gpio constructor
 /*
---------------- Serial Port Construtor ----------------------------------------
-Return a serialport object using specified pins.  Frame format is 1-32 databits,
-no parity and 1 stop bit.  Baud rates from 50-250000 are allowed.  For now, we
-implement a serial port suitable for interfacing with AVR/Arduino.
-Usage: Application must poll for read data to prevent data loss.  Read method
-uses callback.  (Desire to make this readable.read() like)
-Todo: - make rts/cts, dsr/dtr more general purpose.
-    - implement duplex stream api
-*/
+ *  Serial Port Constructor
+ *
+ *  Return a serialport object using specified pins.  Frame format is 1-32 databits,
+ *  no parity and 1 stop bit.  Baud rates from 50-250000 are allowed.
+ *  Usage: Application must poll for read data to prevent data loss.  Read method
+ *  uses callback.  (Desire to make this readable.read() like)
+ *  Todo: - make rts/cts, dsr/dtr more general purpose.
+ *        - implement duplex stream api
+ */
   that.serialport = function (rx, tx, dtr) {
     var _serialport = function (rx, tx, dtr) {
+      if (dtr)
+        assert(isUserGpio(rx) && isUserGpio(tx) && isUserGpio(dtr),
+        "Arguments 'rx', 'tx', and 'dtr' must be valid user GPIO")
+      else
+        assert(isUserGpio(rx) && isUserGpio(tx),
+        "Arguments 'rx' and 'tx' must be valid user GPIO")
+      
       var baud, bits, isOpen=false, txBusy=false, maxChars, buffer=''
-      var _rx = new that.gpio(rx)
-      var _tx
+      var _rx, _tx, _dtr
+      _rx = new that.gpio(rx)
       if (tx === rx) { // loopback mode
         _tx = _rx
       } else _tx = new that.gpio(tx)
-      var _dtr = (dtr === tx) ? _tx : new that.gpio(dtr)
+      if (dtr)
+        _dtr = (dtr === tx) ? _tx : new that.gpio(dtr)
       _rx.modeSet('input') // need a pullup?
       _tx.modeSet('output')
       _tx.write(1)
-      _dtr.modeSet('output')
-      _dtr.write(1)
+      if (dtr) {
+        _dtr.modeSet('output')
+        _dtr.write(1)
+      }
 
       this.open = function (baudrate, databits, cb) {
         if (cb) assert(typeof cb === 'function',
@@ -846,8 +847,8 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
                 if (err) throw(createSPError(err))
                 log("retry success")
                 isOpen = true
-                if (dtr !== tx) {
-                // pulse dtr pin to reset Arduino
+                if (dtr && dtr !== tx) {
+                  // pulse dtr pin to reset Arduino
                   _dtr.write(0, () => {
                     setTimeout(() => { _dtr.write(1) }, 10)
                   })
@@ -864,8 +865,8 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
           } else {
             // normal success
             isOpen = true
-            if (dtr !== tx) {
-            // pulse dtr pin to reset Arduino
+            if (dtr && dtr !== tx) {
+              // pulse dtr pin to reset Arduino
               _dtr.write(0, () => {
                 setTimeout(() => { _dtr.write(1) }, 10)
               })
@@ -979,23 +980,26 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
         if (typeof callback === 'function') callback(null, 0)
       }
       this.end = function (callback) {
+        if (callback)
+          assert(typeof callback === 'function', "Argument 'cb' must be a function")
         this.close((err) => {
-          if (err) if (callback && typeof callback === 'function')
+          if (err) if (callback)
                         callback(createSPError(err))
                    else that.emit(createSPError(err))
           _tx.modeSet('in', (err) => {
-            if (err)  if (callback && typeof callback === 'function')
+            if (err)  if (callback)
                            callback(createSPError(err))
                       else that.emit(createSPError(err))
-            _dtr.modeSet('input', (err) => {
-              if (err) if (callback && typeof callback === 'function')
-                            callback(createSPError(err))
-                       else that.emit(createSPError(err))
-              // success, finally!
-              if (typeof callback === 'function') {
-                callback()
-              }
-            })
+            if (dtr)
+              _dtr.modeSet('input', (err) => {
+                if (err) if (callback)
+                              callback(createSPError(err))
+                         else that.emit(createSPError(err))
+                // success, finally!
+                if (callback)
+                  callback()
+              })
+            else if (callback) callback()
           })
         })
       }
@@ -1009,10 +1013,6 @@ Todo: - make rts/cts, dsr/dtr more general purpose.
       })
     }
 
-  // check gpio pins are valid and (todo) available
-    if (!(that.isUserGpio(rx) && that.isUserGpio(tx) && that.isUserGpio(dtr))) {
-      return undefined
-    }
     _serialport.prototype = that
     return new _serialport(rx, tx, dtr)
   }// pigpio serialport constructor
