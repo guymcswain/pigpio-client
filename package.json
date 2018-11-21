@@ -23,7 +23,7 @@
     "pigpiod"
   ],
   "author": "Guy McSwain",
-  "license": "ISC",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/guymcswain/pigpio-client.git"
