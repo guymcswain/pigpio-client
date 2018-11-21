@@ -283,7 +283,7 @@ exports.pigpio = function (pi) {
       let error = null
       if (err) {
         error = new MyError({
-          name: "pigpio",
+          name: "pigpioError",
           code: ERR[err].code,
           message: ERR[err].message,
           api: API[cmd[0]]
@@ -474,7 +474,6 @@ exports.pigpio = function (pi) {
     if (notifiers.size === MAX_NOTIFICATIONS) {
       let error = new MyError('Notification limit reached, cannot add this notifier')
       error.code = 'PI_CLIENT_NOTIFICATION_LIMIT'
-      //that.emit('error', new Error('Notification limit reached, cannot add this notifier'))
       that.emit('error', error)
       return null
     }
@@ -641,7 +640,10 @@ exports.pigpio = function (pi) {
         if (notifierID !== null) {
           that.stopNotifications(notifierID, (err, res) => {
             notifierID = null
-            if (typeof cb === 'function') cb(err, res)
+            if (cb && typeof cb === 'function')
+              cb(err, res)
+            else if (err)
+              that.emit('error', new MyError(err))
           })
         }
       }
@@ -1006,8 +1008,8 @@ exports.pigpio = function (pi) {
     }// _serialport()
 
     function createSPError(err) {
-      return new MyError( { name: 'pigpio-client',
-                            api: 'serial.write',
+      return new MyError( { name: 'pigpioClientError',
+                            api: 'serialport',
                             code: (typeof err === 'string')? 'PI_CLIENT' : err.code,
                             message: (typeof err === 'string')? err : err.message
       })
@@ -1023,7 +1025,7 @@ function MyError(settings, context) {
   settings = settings || {}
   if (typeof settings === 'string')
     settings = {message: settings}
-  this.name = settings.name || "pigpio_client"
+  this.name = settings.name || "pigpioClientError"
   this.code = settings.code || "PI_CLIENT"
   this.message = settings.message || "An error occurred"
   this.api = settings.api || ""
