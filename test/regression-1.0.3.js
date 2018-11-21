@@ -37,11 +37,13 @@ Pi.on('connected', (info) => {
   gpio.waveNotBusyAsync = util.promisify(gpio.waveNotBusy)
   gpio.serialReadOpenAsync = util.promisify(gpio.serialReadOpen)
   gpio.serialReadCloseAsync = util.promisify(gpio.serialReadClose)
+  gpio.endNotifyAsync = util.promisify(gpio.endNotify)
+  Pi.endAsync = util.promisify(Pi.end)
  
   ;(async function() {
     let test
     try {
-      /*
+      
       test = 'pigpio error test'
       process.stderr.write(`Running ${test} ... `)
       let result = await testPigpioError()
@@ -61,25 +63,27 @@ Pi.on('connected', (info) => {
       process.stderr.write(`Running ${test} ... `)
       await testWaves()
       process.stderr.write(' PASS\n')
-*/
+
       test = 'Serialport test'
       process.stderr.write(`Running ${test} ... `)
       await testSerialport()
       process.stderr.write(' PASS\n')
 
+      await Pi.endAsync()
+      console.log('\n\nAll tests passed!')
+      process.exit()
     }
     catch(e) {
       //process.stderr.write(`FAIL!!! ${test}: ${e.message}\n`)
       process.stderr.write(`${e.message}\n`)
       //console.log(e.stack)
-      Pi.end()
-      process.exit()
+      Pi.end( ()=> {
+        process.exit()
+      })
     }
-    setTimeout( () => {
-      console.log('\n\nAll tests passed!')
-      Pi.end()
-      process.exit()
-    }, 1000)
+    
+    throw("Things did not end well!")
+
   })()
 
 function testPigpioError() {
@@ -98,75 +102,69 @@ function testPigpioError() {
       
       err = await onErrorBackResolve(Pi.request, MODEG, 62, 0, 0)
       assert.strictEqual(err.code, 'PI_BAD_GPIO', 'wrong error code')
+      assert(err.name === 'pigpioError', "wrong error name")
+      assert(err.api === 'MODEG', "wrong api")
       debug(`\nPASS ${err.name}, ${err.message}, ${err.api}`)
+      
       err = await onErrorBackResolve(Pi.request, WRITE, GPIO, BAD_PARAM, 0)
       assert.strictEqual(err.code, 'PI_BAD_LEVEL', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
       err = await onErrorBackResolve(Pi.request, PWM, BAD_USER_GPIO, 0, 0)
       assert.strictEqual(err.code, 'PI_NOT_PERMITTED', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
       err = await onErrorBackResolve(Pi.request, MODES, GPIO, BAD_PARAM, 0)
       assert.strictEqual(err.code, 'PI_BAD_MODE', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
       err = await onErrorBackResolve(Pi.request, WVDEL, BAD_PARAM, 0, 0)
       assert.strictEqual(err.code, 'PI_BAD_WAVE_ID', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
       /* Hangs pigpio!!!!
       err = await onErrorBackResolve(Pi.request, WVTXM, GPIO, BAD_PARAM, BAD_PARAM)
       assert.strictEqual(err.code, 'PI_BAD_WAVE_MODE', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
       */
-      /* pigpio-client Fatal Error: Requires request api with extended parameters.
-      err = await onErrorBackResolve(Pi.request, SLRO, GPIO, BAD_PARAM, BAD_PARAM)
-      assert.strictEqual(err.code, 'PI_BAD_WAVE_BAUD', 'wrong error code')
-      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      */
+      
       try { await gpio.serialReadCloseAsync()}
       catch(e) {debug(`gpio ${(e?'is not':'is')} bit bang serial`)}
+      
       err = await onErrorBackResolve(Pi.request, SLR, GPIO, 0, 0) // >=0
       assert.strictEqual(err.code, 'PI_BAD_SERIAL_COUNT', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
       err = await onErrorBackResolve(Pi.request, SLR, GPIO, 1, 0) // not yet open
       assert.strictEqual(err.code, 'PI_NOT_SERIAL_GPIO', 'wrong error code')
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      /* Passes.  Don't know how to produce error: PI_SERIAL_READ_NO_DATA
-      await gpio.serialReadOpenAsync(9600, 8) // open GPIO for serial data
-      err = await onErrorBackResolve(Pi.request, SLR, GPIO, 1, 0)
-      assert.strictEqual(err.code, 'PI_SERIAL_READ_NO_DATA', 'wrong error code')
-      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      await gpio.serialReadCloseAsync()
-      */
       
-    // pigpio-client exception errors - synchronous calls! 
+    // pigpio-client assertion errors
       
       // api checks gpio paramter
-      let badGpio = Pi.gpio(BAD_USER_GPIO)
-      err = onThrowErrorResolve(badGpio.modeSet, 'in')
-      assert.strictEqual(err.code, 'PI_CLIENT', 'wrong error code')
-      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      // api checks mode is string
-      err = onThrowErrorResolve(gpio.modeSet, 42)
-      assert.strictEqual(err.code, 'PI_CLIENT', 'wrong error code')
-      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      // api checks write level
-      err = onThrowErrorResolve(gpio.write, BAD_PARAM)
-      assert.strictEqual(err.code, 'PI_CLIENT', 'wrong error code')
-      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      // api relies on pigpio to check bad parameter
-      err = await onErrorBackResolve(gpio.pullUpDown, BAD_PARAM)
-      assert.strictEqual(err.code, 'PI_BAD_PUD', 'wrong error code')
+      err = onThrowErrorResolve(Pi.gpio, BAD_USER_GPIO)
+      assert.strictEqual(err.code,
+        'ERR_ASSERTION', "gpio constructor did not check bad 'gpio' argument")
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
       
-      /*
-      // api checks callback function
-      let apis = ['read', 'modeGet']
-      apis.forEach( (api) => {
-        debug(api)
-        err = onThrowErrorResolve(gpio[api])
-        assert.strictEqual(err.code, 'PI_CLIENT_NO_CB', 'API failed to check cb')
-        debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
-      })
-      */
+      // api checks mode is string
+      err = onThrowErrorResolve(gpio.modeSet, 'alt-0')
+      assert.strictEqual(err.code, 'ERR_ASSERTION',
+        "modeSet did not check bad 'mode' argument")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
+      // api checks write level
+      err = onThrowErrorResolve(gpio.write, BAD_PARAM)
+      assert.strictEqual(err.code, 'ERR_ASSERTION',
+        "write method did not check 'level' argument")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+      
+      // api relies on pigpio to check bad 'pud' parameter
+      err = await onErrorBackResolve(gpio.pullUpDown, BAD_PARAM)
+      assert.strictEqual(err.code,
+        'PI_BAD_PUD', "pigpio did not range check 'pud' argument.")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+
     }
 
     catch(e) {
@@ -278,6 +276,10 @@ function testNotifications() {
       gpio.notify( (level, tick) => {
         eventQ.push({level: level, tick: tick})
       })
+/* Not in v1.1.0
+      // verify we can open two notifications on same gpio
+      gpio.notify( () => {})
+*/      
       // await for notifications to begin
       if (info.pigpioVersion <= 67) {
         debug('Delay 1 minute for pigpio V67')
@@ -312,16 +314,15 @@ function testNotifications() {
       
       if (eventQ.length) debug(`${eventQ.length} events remaining in queue!`)
       
-      gpio.endNotify()
+      await gpio.endNotifyAsync()
 
-      gpio.write(level)
+      await gpio.writeAsync(level)
       
       // verify last event is 'null event'
-      await sleep(100)
       ev = eventQ.shift()
       if (!(ev.level===null && ev.tick===null)) {
         debug("Unexpected event in event queue", ev)
-        throw "Notifications did not end"
+        throw "Notifications did not end with '{level: null, tick: null}'"
       }
       // done
     } catch(e) {
@@ -552,7 +553,7 @@ function testSerialport() {
 
       debug('read back and compare')
       wdog = setTimeout(()=> {throw("SP timeout #2 reading")},
-                 (LOREMIPSUM.length+1) * (DATABITS + 2) * 1000 / BAUDRATE + 200)
+                 (LOREMIPSUM.length+1) * (DATABITS + 2) * 1000 / BAUDRATE + 1000)
       result = ""
       while (result.length < LOREMIPSUM.length) {
         let res = await sp.readAsync()
