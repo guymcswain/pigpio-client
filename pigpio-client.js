@@ -540,16 +540,7 @@ exports.pigpio = function (pi) {
   }
 
   that.getInfo = function () {
-    return (`connected pigpiod info:
-\thost : ${info.host}
-\tport : ${info.port}
-\tpigpio version : ${info.pigpioVersion}
-\tRPi CPU info : ${info.hwVersion}
-\tRPi HW type : ${info.hardware_type}
-\tUser GPIO : ${info.userGpioMask.toString(16)}
-\tpipelining : ${info.pipelining}
-\tcommand socket connected : ${info.commandSocket}
-\tnotification socket connected : ${info.notificationSocket}`)
+    return (info)
   }
   that.getCurrentTick = function (cb) {
     that.request(TICK, 0, 0, 0, cb)
