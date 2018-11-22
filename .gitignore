@@ -1,5 +1,8 @@
-# ignore test directory
-#test/*
+# ignore directories
+test/*
+temp/*
+node_modules
+
 
 # ignore readme.md derived files
 *.html
