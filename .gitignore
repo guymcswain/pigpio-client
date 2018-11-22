@@ -3,8 +3,14 @@ test/*
 temp/*
 node_modules
 
+# but include these files
+!test/regression-1.0.3.js
+
 
 # ignore readme.md derived files
 *.html
 readme.pdf
 *.txt
+
+# ignore other
+package-lock.json
