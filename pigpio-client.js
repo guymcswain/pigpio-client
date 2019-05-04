@@ -641,7 +641,7 @@ exports.pigpio = function (pi) {
       }
   // glitch
       this.glitchSet = function (steady, callback) {
-        assert(typeof level === 'number' && (level > 0 || level <= 300000),
+        assert(typeof steady === 'number' && (steady >= 0 || steady <= 300000),
           "Argument 'steady' must be a numeric bewtween 0 or 300000")
         request(FG, gpio, steady, 0, callback)
       }
