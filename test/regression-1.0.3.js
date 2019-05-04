@@ -168,17 +168,17 @@ function testPigpioError() {
       // api check glitch set
       err = onThrowErrorResolve(gpio.glitchSet, 'string-0')
       assert.strictEqual(err.code, 'ERR_ASSERTION',
-        "glitchSet did not check bad 'steady' argument")
+        "glitchSet did not check bad 'steady' argument (paramter type)")
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
 
       err = onThrowErrorResolve(gpio.glitchSet, BAD_PARAM_NEG)
       assert.strictEqual(err.code, 'ERR_ASSERTION',
-        "glitchSet did not check bad 'steady' argument")
+        "glitchSet did not check bad 'steady' argument (too small paramter)")
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
 
       err = onThrowErrorResolve(gpio.glitchSet, BAD_PARAM_BIG)
       assert.strictEqual(err.code, 'ERR_ASSERTION',
-        "glitchSet did not check bad 'steady' argument")
+        "glitchSet did not check bad 'steady' argument (too big paramter)")
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
 
     }
