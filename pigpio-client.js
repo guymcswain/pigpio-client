@@ -13,7 +13,7 @@ const ERR = SIF.PigpioErrors
 // pigpio supported commands:
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
-WVDEL, WVAS, HP, HC, GDC, PFS} = SIF.Commands
+WVDEL, WVAS, HP, HC, GDC, PFS, FG} = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
@@ -638,6 +638,12 @@ exports.pigpio = function (pi) {
               that.emit('error', new MyError(err))
           })
         }
+      }
+  // glitch
+      this.glitchSet = function (steady, callback) {
+        assert(typeof level === 'number' && (level > 0 || level <= 300000),
+          "Argument 'steady' must be a numeric bewtween 0 or 300000")
+        request(FG, gpio, steady, 0, callback)
       }
 
   // Waveform generation methods
