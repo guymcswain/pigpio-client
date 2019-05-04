@@ -179,7 +179,7 @@ and *tick* where *tick* represents the system's time since boot.
 a null *tick* value is sent - useful for stream objects that wrap the notifier callback.  
 
 **`gpio.glitchSet(steady, cb)`** Sets a glitch filter (0-300000) on gpio in microseconds. Only effects notifications.
-[`gpioGlitchFilter`]((http://abyz.me.uk/rpi/pigpio/cif.html#gpioGlitchFilter)  
+[`gpioGlitchFilter`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioGlitchFilter)  
 
 ### gpio bit\_bang\_serial methods  
 **`gpio.serialReadOpen(baudRate, dataBits, cb)`** - [`gpioSerialReadOpen`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioSerialReadOpen)   
