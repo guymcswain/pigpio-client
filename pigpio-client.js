@@ -13,7 +13,7 @@ const ERR = SIF.PigpioErrors
 // pigpio supported commands:
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
-WVDEL, WVAS, HP, HC, GDC, PFS, FG} = SIF.Commands
+WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW} = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
@@ -749,6 +749,14 @@ exports.pigpio = function (pi) {
       }
       this.getPWMdutyCycle = function (cb) {
         request(GDC, gpio, 0, 0, cb)
+      }
+
+  // Servo pulse width
+      this.setServoPulsewidth = function (pulseWidth, cb) {
+        request(SERVO, gpio, pulseWidth, 0, cb);
+      }
+      this.getServoPulsewidth = function (cb) {
+        request(GPW, gpio, 0, 0, cb);
       }
 
   // Bit-Bang Serial IO
