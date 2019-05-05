@@ -136,6 +136,10 @@ PWM or servo pulses are active on the gpio they are switched off. [`gpioWrite`](
 **`gpio.analogWrite(dutyCycle, cb)`**  Set the PWM dutycycle (0-255) on the gpio.  Caution: 
 This will stop all waveform generation. [`gpioPWM`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioPWM).  
 
+**`gpio.setServoPulsewidth(pulseWidth, cb)`** Starts servo pulses on gpio. Servo can be turned off by setting pulsewidth to 0 and from 500 (most anti-clockwise) to 2500 (most clockwise). Be aware that you can damage your servo when setting to high values. A vlaue of 1500 (mid-point) is a good starting point to check range of your servo. [`gpioServo`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioServo)  
+
+**`gpio.getServoPulsewidth(cb)`** Returns the pulsewidth of gpio as argument to callback. [`gpioGetServoPulsewidth`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioGetServoPulsewidth)  
+
 ### gpio waveform methods
 **`gpio.waveClear(cb)`** Clear all waveforms (release DMA control blocks, reset wave IDs). [`gpioWaveClear`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveClear)  
 
