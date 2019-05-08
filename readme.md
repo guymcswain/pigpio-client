@@ -2,13 +2,13 @@
 The pigpio-client library allows you to connect to a remote Raspberry Pi running
 the pigpio server - pigpiod - and manipulate its GPIO pins.  This library is implemented 
 using the pigpio library socket interface.  For the underlying detail of the pigpio 
-socket interface see http://abyz.co.uk/rpi/pigpio/sif.html  
+socket interface see http://abyz.me.uk/rpi/pigpio/sif.html  
 
 [v1.1.0](https://github.com/guymcswain/pigpio-client/wiki#next-planned-release-v110) introduces significant improvements along with patch fixes.
 
 ### Usage example
 ```javascript
-const pigpio = require('../pigpio-client.js').pigpio({host: 'raspberryHostIP'});  
+const pigpio = require('pigpio-client.js').pigpio({host: 'raspberryHostIP'});  
 pigpio.once('connected', (info) => {
   // display information on pigpio and connection status
   console.log(JSON.stringify(info,null,2));
@@ -47,7 +47,7 @@ Arguments to callback are: `(error, response)` unless otherwise noted.
 If you prefer to use async/await, you can easily promisify (most) any api:
 ```javascript
 const promisify = require('util').promisify;
-const gpio.readAsync = promisify(gpio.read);
+gpio.readAsync = promisify(gpio.read);
 
 (async() => {
   let level;
