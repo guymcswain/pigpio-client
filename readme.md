@@ -136,6 +136,10 @@ PWM or servo pulses are active on the gpio they are switched off. [`gpioWrite`](
 **`gpio.analogWrite(dutyCycle, cb)`**  Set the PWM dutycycle (0-255) on the gpio.  Caution: 
 This will stop all waveform generation. [`gpioPWM`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioPWM).  
 
+**`gpio.setServoPulsewidth(pulseWidth, cb)`** Starts servo pulses on gpio. Pulsewidth can be set to 0 (off) and from 500 (most anti-clockwise) to 2500 (most clockwise). Be aware that you can damage your servo when setting a too high pulseWidth. A value of 1500 (mid-point) is a good starting point to check range of your servo. [`gpioServo`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioServo)  
+
+**`gpio.getServoPulsewidth(cb)`** Returns the pulsewidth of gpio as argument to callback. [`gpioGetServoPulsewidth`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioGetServoPulsewidth)  
+
 ### gpio waveform methods
 **`gpio.waveClear(cb)`** Clear all waveforms (release DMA control blocks, reset wave IDs). [`gpioWaveClear`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveClear)  
 
@@ -177,6 +181,9 @@ and *tick* where *tick* represents the system's time since boot.
 
 **`gpio.endNotify(cb)`**  Unregisters the notification on gpio. For convenience, 
 a null *tick* value is sent - useful for stream objects that wrap the notifier callback.  
+
+**`gpio.glitchSet(steady, cb)`** Sets a glitch filter (0-300000) on gpio in microseconds. Only effects notifications.
+[`gpioGlitchFilter`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioGlitchFilter)  
 
 ### gpio bit\_bang\_serial methods  
 **`gpio.serialReadOpen(baudRate, dataBits, cb)`** - [`gpioSerialReadOpen`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioSerialReadOpen)   

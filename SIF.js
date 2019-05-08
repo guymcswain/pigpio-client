@@ -7,6 +7,7 @@ const CMDS = {
   WRITE:  4,  // write
   PWM:    5,  // analogWrite, setPWMdutyCycle
   PFS:    7,  // setPWMfrequency
+  SERVO:  8,  // setServoPulsewidth
   BR1:    10, // bankRead1
   BR2:    11, // (internal)
   TICK:   16, // getCurrentTick
@@ -25,10 +26,12 @@ const CMDS = {
   WVCRE:  49, // waveCreate
   WVDEL:  50, // waveDelete
   GDC:    83, // getPWMdutyCycle
+  GPW:    84, // getServoPulsewidth
   HC:     85, // hwClock
   HP:     86, // hwPWM
   WVCHA:  93, // waveChainTx
   SLRI:   94, // serialReadInvert
+  FG:     97, // glitch filter
   NOIB:   99, // (internal - notify open in-band)
   WVTXM: 100, // waveSendSync + PI_WAVE_MODE_ONE_SHOT_SYNC,
               // waveSendOnce + PI_WAVE_MODE_ONE_SHOT
