@@ -39,7 +39,9 @@ Pi.on('connected', (info) => {
   gpio.serialReadCloseAsync = util.promisify(gpio.serialReadClose)
   gpio.endNotifyAsync = util.promisify(gpio.endNotify)
   Pi.endAsync = util.promisify(Pi.end)
- 
+  gpio.setServoPulsewidthAsync = util.promisify(gpio.setServoPulsewidth)
+  gpio.getServoPulsewidthAsync = util.promisify(gpio.getServoPulsewidth)
+
   ;(async function() {
     let test
     try {
@@ -268,6 +270,13 @@ function testBasicApis() {
       if (process.env.npm_package_version > '1.0.3') {
         // PAD, associated fd or functions (ie, serialOpen, PWM)
         // Write a 'status dump' like API that reports all info per GPIO
+
+        // Servo tests
+        const SERVO_PULSEWIDTH=1500
+        await gpio.modeSetAsync('output')
+        await gpio.setServoPulsewidthAsync(SERVO_PULSEWIDTH)
+        let servopulsewidth = await gpio.getServoPulsewidthAsync()
+        assert.strictEqual(servopulsewidth, SERVO_PULSEWIDTH, "set/get ServoPulsewidth")
       }
     } catch(e) {
       
