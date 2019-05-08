@@ -29,6 +29,7 @@ const CMDS = {
   HP:     86, // hwPWM
   WVCHA:  93, // waveChainTx
   SLRI:   94, // serialReadInvert
+  FG:     97, // glitch filter
   NOIB:   99, // (internal - notify open in-band)
   WVTXM: 100, // waveSendSync + PI_WAVE_MODE_ONE_SHOT_SYNC,
               // waveSendOnce + PI_WAVE_MODE_ONE_SHOT

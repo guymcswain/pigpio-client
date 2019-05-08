@@ -94,7 +94,7 @@ function testPigpioError() {
     const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
     WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
     WVDEL, WVAS, HP, HC, GDC, PFS} = SIF.Commands
-    const BAD_USER_GPIO = 32, BAD_PARAM=999
+    const BAD_USER_GPIO = 32, BAD_PARAM=999, BAD_PARAM_NEG=-1, BAD_PARAM_BIG=300001
 
     let err
     try {
@@ -163,6 +163,22 @@ function testPigpioError() {
       err = await onErrorBackResolve(gpio.pullUpDown, BAD_PARAM)
       assert.strictEqual(err.code,
         'PI_BAD_PUD', "pigpio did not range check 'pud' argument.")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+
+      // api check glitch set
+      err = onThrowErrorResolve(gpio.glitchSet, 'string-0')
+      assert.strictEqual(err.code, 'ERR_ASSERTION',
+        "glitchSet did not check bad 'steady' argument (paramter type)")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+
+      err = onThrowErrorResolve(gpio.glitchSet, BAD_PARAM_NEG)
+      assert.strictEqual(err.code, 'ERR_ASSERTION',
+        "glitchSet did not check bad 'steady' argument (too small paramter)")
+      debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
+
+      err = onThrowErrorResolve(gpio.glitchSet, BAD_PARAM_BIG)
+      assert.strictEqual(err.code, 'ERR_ASSERTION',
+        "glitchSet did not check bad 'steady' argument (too big paramter)")
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
 
     }
