@@ -4,7 +4,7 @@ the pigpio server - pigpiod - and manipulate its GPIO pins.  This library is imp
 using the pigpio library socket interface.  For the underlying detail of the pigpio 
 socket interface see http://abyz.me.uk/rpi/pigpio/sif.html  
 
-[v1.1.0](https://github.com/guymcswain/pigpio-client/wiki#next-planned-release-v110) introduces significant improvements along with patch fixes.
+[v1.2.0](https://github.com/guymcswain/pigpio-client/wiki) introduces new APIs: glitchSet, setServoPulsewidth, getServoPulseWidth.
 
 ### Usage example
 ```javascript
