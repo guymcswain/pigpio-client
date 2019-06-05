@@ -40,7 +40,7 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.1.0'
+  version: '1.2.1',
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
@@ -395,9 +395,28 @@ exports.pigpio = function (pi) {
     notificationSocket.write(noib, () => {
       // listener once to get handle from NOIB request
       notificationSocket.once('data', (resBuf) => {
-        const res = new Uint32Array(resBuf)
-        handle = res[3]
-        if (process.env.PIGPIO) { log('opened notification socket with handle= ' + handle) }
+        let cmd = resBuf.readUIntLE(0, 4)
+        let p1 = resBuf.readUIntLE(4, 4)
+        let p2 = resBuf.readUIntLE(8, 4)
+        let res = resBuf.readIntLE(12, 4)
+
+        if (cmd!==NOIB || p1!==0 || p2!==0) {
+          res = 255 // set to invalid handle value
+          that.emit('error', new MyError({
+            message: 'Unexpected response to NOIB command on notification socket',
+            api: 'construct pigpio'
+          }))
+        }
+        else if (res < 0) {
+          that.emit('error',  new MyError({
+            name: "pigpioError",
+            code: ERR[res].code,
+            message: ERR[res].message,
+            api: API[cmd]
+          }))
+        }
+        handle= res
+        log('opened notification socket with handle= ' + handle)
 
         // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
@@ -543,6 +562,7 @@ exports.pigpio = function (pi) {
   that.getInfo = function () {
     return (info)
   }
+  that.getHandle = function () { return handle }
   that.getCurrentTick = function (cb) {
     that.request(TICK, 0, 0, 0, cb)
   }
