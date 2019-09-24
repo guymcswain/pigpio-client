@@ -727,8 +727,12 @@ exports.pigpio = function (pi) {
           if (param.hasOwnProperty('loop')) {
             temp = chain.concat(255, 0)
           } else if (param.hasOwnProperty('repeat')) {
-            assert.equal(param.repeat <= 0xffff, true, 'param must be <= 65535')
-            temp = chain.concat(255, 1, param.repeat & 0xff, param.repeat >> 8)
+            if (param.repeat === true) {
+              temp = chain.concat(255, 3)            
+            } else {
+              assert.equal(param.repeat <= 0xffff, true, 'param must be <= 65535')
+              temp = chain.concat(255, 1, param.repeat & 0xff, param.repeat >> 8)
+            }
           } else if (param.hasOwnProperty('delay')) {
             assert.equal(param.delay <= 0xffff, true, 'param must be <= 65535')
             temp = chain.concat(255, 2, param.delay & 0xff, param.delay >> 8)
