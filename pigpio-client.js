@@ -349,6 +349,20 @@ exports.pigpio = function (pi) {
       buf = Buffer.concat([buf, extBuf])
     }
 
+    var promise = new Promise(function (resolve, reject) {
+      var originalCallback = cb
+      cb = function(error, result) {
+        if (typeof originalCallback === 'function') {
+          originalCallback(error, result)
+        }
+        if (error) {
+          reject(error)
+        } else {
+          resolve(result)
+        }
+      }
+    })
+
     // Queue request if request queue is not empty OR callback queue is not empty and pipelining disabled
     if (requestQueue.length > 0 || (callbackQueue.length > 0 && !info.pipelining)) {
       requestQueue.push({buffer: buf, callback: cb})
@@ -364,14 +378,16 @@ exports.pigpio = function (pi) {
         }
       }
     }
+
+    return promise
   } // request()
 
   var pigpv = (callback) => {
-    request(PIGPV, 0, 0, 0, callback)
+    return request(PIGPV, 0, 0, 0, callback)
   }
 
   var hwver = (callback) => {
-    request(HWVER, 0, 0, 0, callback)
+    return request(HWVER, 0, 0, 0, callback)
   }
 
 // Notifications socket = ToDo: check for notification errors response (res[3])
@@ -533,15 +549,16 @@ exports.pigpio = function (pi) {
   }
   that.pauseNotifications = function (cb) {
   // Caution:  This will pause **all** notifications!
-    request(NP, handle, 0, 0, cb)
+    return request(NP, handle, 0, 0, cb)
   }
   that.stopNotifications = function (id, cb) {
     // Clear monitored bits and unregister callback
+    var result
     for (let nob of notifiers.keys()) {
       if (nob.id === id) {
         monitorBits &= ~nob.bits // clear gpio bit in monitorBits
         // Stop the notifications on pigpio hardware
-        request(NB, handle, monitorBits, 0, (err, res) => {
+        result = request(NB, handle, monitorBits, 0, (err, res) => {
           // last callback with null arguments
           nob.func(null, null)
           notifiers.delete(nob)
@@ -549,10 +566,11 @@ exports.pigpio = function (pi) {
         })
       }
     }
+    return result
   }
   that.closeNotifications = function (cb) {
   // Caution: This will close **all** notifications!
-    request(NC, handle, 0, 0, cb)
+    return request(NC, handle, 0, 0, cb)
   }
 
   var isUserGpio = function (gpio) {
@@ -564,16 +582,16 @@ exports.pigpio = function (pi) {
   }
   that.getHandle = function () { return handle }
   that.getCurrentTick = function (cb) {
-    that.request(TICK, 0, 0, 0, cb)
+    return that.request(TICK, 0, 0, 0, cb)
   }
   that.readBank1 = function (cb) {
-    that.request(BR1, 0, 0, 0, cb)
+    return that.request(BR1, 0, 0, 0, cb)
   }
   that.hwPWM = function (gpio, freq, dc, cb) {
-    that.request(HP, gpio, freq, dc, cb)
+    return that.request(HP, gpio, freq, dc, cb)
   }
   that.hwClock = function (gpio, freq, cb) {
-    that.request(HC, gpio, freq, 0, cb)
+    return that.request(HC, gpio, freq, 0, cb)
   }
 
   that.destroy = function () {
@@ -600,13 +618,13 @@ exports.pigpio = function (pi) {
         assert(typeof mode === 'string', "Argument 'mode' must be string.")
         let m = /^outp?u?t?/.test(mode) ? 1 : /^inp?u?t?/.test(mode) ? 0 : undefined
         assert(m !== undefined, "Argument 'mode' is not a valid string.")
-        request(MODES, gpio, m, 0, callback)
+        return request(MODES, gpio, m, 0, callback)
       }
 
       var pullUpDown = function (gpio, pud, callback) {
         assert(typeof pud === 'number', "Argument 'pud' is not a number.")
       // Rely on pigpio library to range check pud argument.
-        request(PUD, gpio, pud, 0, callback)
+        return request(PUD, gpio, pud, 0, callback)
       }
 
   // basic methods
@@ -616,18 +634,18 @@ exports.pigpio = function (pi) {
         assert(typeof level === 'number' && (level === 0 || level === 1),
           "Argument 'level' must be numeric 0 or 1")
         //if ((+level >= 0) && (+level <= 1)) {
-          request(WRITE, gpio, +level, 0, callback)
+          return request(WRITE, gpio, +level, 0, callback)
         //} else throw new MyError('gpio.write level argument must be numeric 0 or 1')
       }
       this.read = function (callback) {
-        request(READ, gpio, 0, 0, callback)
+        return request(READ, gpio, 0, 0, callback)
       }
       this.modeGet = function (callback) {
-        request(MODEG, gpio, 0, 0, callback)
+        return request(MODEG, gpio, 0, 0, callback)
       }
   // PWM
       this.analogWrite = function (dutyCycle, cb) {
-        request(PWM, gpio, dutyCycle, 0, cb)
+        return request(PWM, gpio, dutyCycle, 0, cb)
       }
   // Notification methods
       var notifierID = null
@@ -664,18 +682,18 @@ exports.pigpio = function (pi) {
       this.glitchSet = function (steady, callback) {
         assert(typeof steady === 'number' && steady >= 0 && steady <= 300000,
           "Argument 'steady' must be a numeric bewtween 0 or 300000")
-        request(FG, gpio, steady, 0, callback)
+        return request(FG, gpio, steady, 0, callback)
       }
 
   // Waveform generation methods
       this.waveClear = function (callback) {
-        request(WVCLR, 0, 0, 0, callback)
+        return request(WVCLR, 0, 0, 0, callback)
       }
       this.waveCreate = function (callback) {
-        request(WVCRE, 0, 0, 0, callback)
+        return request(WVCRE, 0, 0, 0, callback)
       }
       this.waveBusy = function (callback) {
-        request(WVBSY, 0, 0, 0, callback)
+        return request(WVBSY, 0, 0, 0, callback)
       }
       this.waveNotBusy = function (time, cb) {
         let timer, callback
@@ -687,6 +705,13 @@ exports.pigpio = function (pi) {
           timer = time
           callback = cb
         }
+        var promise = new Promise(function(resolve) {
+          let originalCallback = callback
+          callback = function() {
+            originalCallback()
+            resolve()
+          }
+        })
         var waitWaveBusy = (done) => {
           setTimeout(() => {
             request(WVBSY, 0, 0, 0, (err, busy) => {
@@ -696,6 +721,7 @@ exports.pigpio = function (pi) {
           }, timer)
         }
         waitWaveBusy(callback)
+        return promise
       }
 
       this.waveAddPulse = function (tripletArr, callback) {
@@ -716,7 +742,7 @@ exports.pigpio = function (pi) {
           i = i + 3
         })
       // ship it
-        request(WVAG, 0, 0, arrBuf.byteLength, callback, arrBuf)
+        return request(WVAG, 0, 0, arrBuf.byteLength, callback, arrBuf)
       }
 
       this.waveChainTx = function (paramArray, callback) {
@@ -749,42 +775,42 @@ exports.pigpio = function (pi) {
         var arrBuf = new ArrayBuffer(chain.length)
         var buffer = new Uint8Array(arrBuf)
         for (let i = 0; i < chain.length; i++) buffer[i] = chain[i]
-        request(WVCHA, 0, 0, arrBuf.byteLength, callback, arrBuf)
+        return request(WVCHA, 0, 0, arrBuf.byteLength, callback, arrBuf)
       }
 
       this.waveTxStop = function (cb) {
-        request(WVHLT, 0, 0, 0, cb)
+        return request(WVHLT, 0, 0, 0, cb)
       }
       this.waveSendSync = function (wid, cb) {
-        request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT_SYNC, 0, cb)
+        return request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT_SYNC, 0, cb)
       }
       this.waveSendOnce = function (wid, cb) {
-        request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT, 0, cb)
+        return request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT, 0, cb)
       }
       this.waveTxAt = function (cb) {
-        request(WVTAT, 0, 0, 0, cb)
+        return request(WVTAT, 0, 0, 0, cb)
       }
       this.waveDelete = function (wid, cb) {
-        request(WVDEL, wid, 0, 0, cb)
+        return request(WVDEL, wid, 0, 0, cb)
       }
 
   // Pulse Width Modulation
       this.setPWMdutyCycle = function (dutyCycle, cb) { // alias of analogWrite
-        request(PWM, gpio, dutyCycle, 0, cb)
+        return request(PWM, gpio, dutyCycle, 0, cb)
       }
       this.setPWMfrequency = function (freq, cb) {
-        request(PFS, gpio, freq, 0, cb)
+        return request(PFS, gpio, freq, 0, cb)
       }
       this.getPWMdutyCycle = function (cb) {
-        request(GDC, gpio, 0, 0, cb)
+        return request(GDC, gpio, 0, 0, cb)
       }
 
   // Servo pulse width
       this.setServoPulsewidth = function (pulseWidth, cb) {
-        request(SERVO, gpio, pulseWidth, 0, cb);
+        return request(SERVO, gpio, pulseWidth, 0, cb)
       }
       this.getServoPulsewidth = function (cb) {
-        request(GPW, gpio, 0, 0, cb);
+        return request(GPW, gpio, 0, 0, cb)
       }
 
   // Bit-Bang Serial IO
@@ -792,20 +818,20 @@ exports.pigpio = function (pi) {
         var arrBuf = new ArrayBuffer(4)
         var dataBitsBuf = new Uint32Array(arrBuf, 0, 1)
         dataBitsBuf[0] = dataBits
-        request(SLRO, gpio, baudRate, 4, callback, arrBuf)
+        return request(SLRO, gpio, baudRate, 4, callback, arrBuf)
       }
       this.serialRead = function (count, callback) {
-        request(SLR, gpio, count, 0, callback)
+        return request(SLR, gpio, count, 0, callback)
       }
       this.serialReadClose = function (callback) {
-        request(SLRC, gpio, 0, 0, callback)
+        return request(SLRC, gpio, 0, 0, callback)
       }
       this.serialReadInvert = function (mode, callback) {
         var flag
         if (mode === 'invert') flag = 1
         if (mode === 'normal') flag = 0
         assert(typeof flag !== 'undefined', "Argument 'mode' is invalid.")
-        request(SLRI, gpio, flag, 0, callback)
+        return request(SLRI, gpio, flag, 0, callback)
       }
       this.waveAddSerial = function (baud, bits, delay, data, callback) {
         let dataBuf = Buffer.from(data)
@@ -813,7 +839,7 @@ exports.pigpio = function (pi) {
         let buf = Buffer.concat([paramBuf, dataBuf])
       // request take array buffer (this conversion from ZachB on SO)
       // let arrBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-        request(WVAS, gpio, baud, buf.length, callback, buf)
+        return request(WVAS, gpio, baud, buf.length, callback, buf)
       }
     }// var gpio
     _gpio.prototype = that // inheritance

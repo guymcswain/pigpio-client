@@ -38,28 +38,12 @@ pigpio.on('disconnected', (reason) => {
   setTimeout( pigpio.connect, 1000, {host: 'raspberryHostIP'});
 });
 ```
-All APIs accept error-first callback as an optional last argument.  Depending 
-on the presence of a callback argument, errors returned by pigpio are delivered in 
+All APIs accept error-first callback as an optional last argument, and also return
+a promise (and thus can be safey used with async/await).
+Depending on the presence of a callback argument, errors returned by pigpio are delivered in 
 two ways:  Methods called without a callback emit 'error' events.  Methods called 
 with a callback are supplied an `Error` object as the first argument returned.  
 Arguments to callback are: `(error, response)` unless otherwise noted.
-
-If you prefer to use async/await, you can easily promisify (most) any api:
-```javascript
-const promisify = require('util').promisify;
-gpio.readAsync = promisify(gpio.read);
-
-(async() => {
-  let level;
-  try {
-    level = await gpio.readAsync();
-    console.log('The gpio level is: ', level);
-    //...
-  } catch(e) {
-    console.log(e.code, e.message) // pigpio error message
-  }
-}());
-```
 
 ### Constructors
 **`PigpioClient.pigpio(options)`**:
