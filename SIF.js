@@ -20,6 +20,7 @@ const CMDS = {
   WVAG:   28, // waveAddPulse
   WVAS:   29, // waveAddSerial
   WVBSY:  32, // waveBusy, waveNotBusy
+  WVHLT:  33, // waveTxStop
   SLRO:   42, // serialReadOpen
   SLR:    43, // serialRead
   SLRC:   44, // serialReadClose
