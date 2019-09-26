@@ -167,6 +167,9 @@ waveform. [`gpioWaveTxSend` with mode set to PI_WAVE_MODE_ONE_SHOT_SYNC.](http:/
 **`gpio.waveTxAt(cb)`**  Return currently active wave id, no wave being transmitted 
 (9999) or wave not found (9998). [`gpioWaveTxAt`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveTxAt)  
 
+**`gpio.waveTxStop(cb)`**  Aborts the transmission of the current waveform.
+This function is intended to stop a waveform started in repeat mode. [`waveTxStop`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveTxStop)  
+
 **`gpio.waveDelete(wid, cb)`**  Delete the wave id `wid`. [`gpioWaveDelete`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveDelete)  
 
 *Note:  `waveClear`, `waveCreate` and `waveBusy` are not gpio specific.  These methods 

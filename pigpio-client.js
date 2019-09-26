@@ -14,7 +14,7 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 
-WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW} = SIF.Commands
+WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW} = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
@@ -752,6 +752,9 @@ exports.pigpio = function (pi) {
         request(WVCHA, 0, 0, arrBuf.byteLength, callback, arrBuf)
       }
 
+      this.waveTxStop = function (cb) {
+        request(WVHLT, 0, 0, 0, cb)
+      }
       this.waveSendSync = function (wid, cb) {
         request(WVTXM, wid, PI_WAVE_MODE_ONE_SHOT_SYNC, 0, cb)
       }
