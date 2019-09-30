@@ -9,57 +9,58 @@ socket interface see http://abyz.me.uk/rpi/pigpio/sif.html
 ### Usage example
 ```javascript
 const pigpio = require('pigpio-client.js').pigpio({host: 'raspberryHostIP'});  
-pigpio.once('connected', (info) => {
-  // display information on pigpio and connection status
-  console.log(JSON.stringify(info,null,2));
-  
-  // control an LED on GPIO 25
-  const LED = pigpio.gpio(25);
-  LED.modeSet('output');
-  LED.write(1); // turn on LED
-  LED.write(0); // turn off
-  LED.analogWrite(128); // set to 50% duty cycle (out of 255)
-  
-  // get events from a button on GPIO 17
-  const Button = pigpio.gpio(17);
-  Button.modeSet('input');
-  Button.notify((level, tick)=> {
-    console.log(`Button changed to ${level} at ${tick} usec`)
-  });
+
+const ready = new Promise((resolve, reject) => {
+  pigpio.once('connected', resolve);
+  pigpio.once('error', reject);
 });
 
-// Errors are emitted unless you provide API with callback.
-pigpio.on('error', (err)=> {
-  console.log('Application received error: ', err.message); // or err.stack
-});
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+ready.then(async (info) => {
+  // display information on pigpio and connection status
+  console.log(JSON.stringify(info,null,2));
+
+  // get events from a button on GPIO 17
+  const button = pigpio.gpio(17);
+  await button.modeSet('input');
+  button.notify((level, tick)=> {
+    console.log(`Button changed to ${level} at ${tick} usec`)
+  });
+
+  // control an LED on GPIO 4
+  const led = pigpio.gpio(4);
+  await led.modeSet('output');
+  await led.write(1);  // turn on LED
+  await wait(500);
+  await led.write(0);  // turn off
+  await wait(500);
+
+  // use waves to blink the LED rapidly (toggle every 100ms)
+  await led.waveClear();
+  await led.waveAddPulse([[1, 0, 100000], [0, 1, 100000]]);
+  const blinkWave = await led.waveCreate();
+  await led.waveChainTx([{loop: true}, {waves: [blinkWave]}, {repeat: true}]);
+
+  // wait for 10 ms, stop the waves
+  await wait(10000);
+  await led.waveTxStop();
+}).catch(console.error);
+
 pigpio.on('disconnected', (reason) => {
   console.log('App received disconnected event, reason: ', reason);
   console.log('App reconnecting in 1 sec');
-  setTimeout( pigpio.connect, 1000, {host: 'raspberryHostIP'});
+  setTimeout(() => pigpio.connect({host: 'raspberryHostIP'}), 1000);
 });
 ```
-All APIs accept error-first callback as an optional last argument.  Depending 
-on the presence of a callback argument, errors returned by pigpio are delivered in 
+All APIs accept error-first callback as an optional last argument, and also return
+a promise (and thus can be safey used with async/await).
+Depending on the presence of a callback argument, errors returned by pigpio are delivered in 
 two ways:  Methods called without a callback emit 'error' events.  Methods called 
 with a callback are supplied an `Error` object as the first argument returned.  
 Arguments to callback are: `(error, response)` unless otherwise noted.
-
-If you prefer to use async/await, you can easily promisify (most) any api:
-```javascript
-const promisify = require('util').promisify;
-gpio.readAsync = promisify(gpio.read);
-
-(async() => {
-  let level;
-  try {
-    level = await gpio.readAsync();
-    console.log('The gpio level is: ', level);
-    //...
-  } catch(e) {
-    console.log(e.code, e.message) // pigpio error message
-  }
-}());
-```
 
 ### Constructors
 **`PigpioClient.pigpio(options)`**:
