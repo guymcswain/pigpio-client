@@ -349,19 +349,18 @@ exports.pigpio = function (pi) {
       buf = Buffer.concat([buf, extBuf])
     }
 
-    var promise = new Promise(function (resolve, reject) {
-      var originalCallback = cb
-      cb = function(error, result) {
-        if (typeof originalCallback === 'function') {
-          originalCallback(error, result)
+    var promise;
+    if (typeof cb !== 'function') {
+      promise = new Promise((resolve, reject) => {
+        cb = (error, ...args) => {
+          if (error) {
+            reject(error)
+          } else {
+            resolve(args.length > 1 ? args : args[0]);
+          }
         }
-        if (error) {
-          reject(error)
-        } else {
-          resolve(result)
-        }
-      }
-    })
+      })
+    }
 
     // Queue request if request queue is not empty OR callback queue is not empty and pipelining disabled
     if (requestQueue.length > 0 || (callbackQueue.length > 0 && !info.pipelining)) {
@@ -708,7 +707,9 @@ exports.pigpio = function (pi) {
         var promise = new Promise(function(resolve) {
           let originalCallback = callback
           callback = function() {
-            originalCallback()
+            if (typeof originalCallback === 'function') {
+              originalCallback()
+            }
             resolve()
           }
         })
