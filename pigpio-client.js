@@ -224,6 +224,12 @@ exports.pigpio = function (pi) {
     var handler = function (had_error) {
       if (had_error) {
         log(`${sock.name} closed on error`)
+        if (sock.name === 'commandSocket' && !sock.retryTimer)
+          console.log(
+            "Unable to connect to pigpiod and no retry timeout option specified."
+            + "  Process exiting.  Check the host address/port and if the daemon"
+            + " is running."
+          )
       }
 
       // Close event without error indicates peer has closed connection.  We must
