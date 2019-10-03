@@ -1,14 +1,18 @@
 # pigpio-client
-The pigpio-client library allows you to connect to a remote Raspberry Pi running
-the pigpio server - pigpiod - and manipulate its GPIO pins.  This library is implemented 
-using the pigpio library socket interface.  For the underlying detail of the pigpio 
-socket interface see http://abyz.me.uk/rpi/pigpio/sif.html  
+Pigpio-client exposes the socket interface APIs of the pigpio library using nodejs.  This allows you to connect to a Raspberry Pi, running 
+remotely or local, and manipulate its GPIO pins with javascript.  The pigpio socket interface is described more fully [here:](http://abyz.me.uk/rpi/pigpio/sif.html)
 
-[v1.2.0](https://github.com/guymcswain/pigpio-client/wiki) introduces new APIs: glitchSet, setServoPulsewidth, getServoPulseWidth.
+New in [**v1.3.0**](https://github.com/guymcswain/pigpio-client/wiki)  
+* All APIs work with async/await and promises
+* Added `gpio.waveTxStop`  
+* Repeat forever option for `gpio.waveChainTx`.
 
-### Usage example
+#### Installing and Running pigpio daemon
+A guide for installing and running pigpiod along with other useful information can be found in the [wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
+
+### pigpio-client usage example
 ```javascript
-const pigpio = require('pigpio-client.js').pigpio({host: 'raspberryHostIP'});  
+const pigpio = require('pigpio-client').pigpio({host: 'raspberryHostIP'});  
 
 const ready = new Promise((resolve, reject) => {
   pigpio.once('connected', resolve);
@@ -42,21 +46,15 @@ ready.then(async (info) => {
   await led.waveClear();
   await led.waveAddPulse([[1, 0, 100000], [0, 1, 100000]]);
   const blinkWave = await led.waveCreate();
-  await led.waveChainTx([{loop: true}, {waves: [blinkWave]}, {repeat: true}]);
+  led.waveChainTx([{loop: true}, {waves: [blinkWave]}, {repeat: true}]);
 
-  // wait for 10 ms, stop the waves
+  // wait for 10 sec, stop the waves
   await wait(10000);
   await led.waveTxStop();
 }).catch(console.error);
-
-pigpio.on('disconnected', (reason) => {
-  console.log('App received disconnected event, reason: ', reason);
-  console.log('App reconnecting in 1 sec');
-  setTimeout(() => pigpio.connect({host: 'raspberryHostIP'}), 1000);
-});
 ```
 All APIs accept error-first callback as an optional last argument, and also return
-a promise (and thus can be safey used with async/await).
+a promise (and thus can be safely used with async/await).
 Depending on the presence of a callback argument, errors returned by pigpio are delivered in 
 two ways:  Methods called without a callback emit 'error' events.  Methods called 
 with a callback are supplied an `Error` object as the first argument returned.  
@@ -156,9 +154,12 @@ Polls waveform status at interval msec.  Defaults to 25msec.
 waveform.  *Pulse_t* is a tuple [1, 0, delay] for positive pulse, [0, 1, delay] 
 for negative pulse width = delay. [`gpioWaveAddGeneric`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveAddGeneric).  
 
-**`gpio.waveChainTx([wids], {loop:x, delay:y}, cb)`** Transmit a chain of waves 
-represented by array of wave IDs `wids`.  Options object specifies `loop` and `delay` 
-(between loop) values. [`gpioWaveChain`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveChain)  
+**`gpio.waveChainTx([{loop:x}, {waves: [wids]}, {delay:y}, {repeat:z}], cb)`**
+[`gpioWaveChain`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveChain)   
+Transmit a chain of waves represented by array of wave IDs `[wids]`.  The chain can have **loop**s, be separated by **delay**s and **repeat**ed by inclusion of option objects.  
+  * loop : x, begins a loop.  x can be anything
+  * delay: y, insert of delay of y=0 to 65535 microseconds 
+  * repeat: z, repeat loop z=0 to 65535 times or forever if z=**true** 
 
 **`gpio.waveSendSync(wid, cb)`**  Synchronizes `wid` to the currently active 
 waveform. [`gpioWaveTxSend` with mode set to PI_WAVE_MODE_ONE_SHOT_SYNC.](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveTxSend)    
@@ -238,6 +239,3 @@ https://github.com/guymcswain/pigpio-client/issues
 
 #### Limitations
 Only a single instance of serialport is supported.  **<=1.1.x**
-
-#### Installing and Running pigpiod plus other useful information
-see [pigpio-client wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
