@@ -20,27 +20,7 @@ Pi.on('connected', (info) => {
   var gpio = Pi.gpio(GPIO)
   // use async methods
   const util = require('util')
-  Pi.requestAsync = util.promisify(Pi.request)
-  gpio.modeSetAsync = util.promisify(gpio.modeSet)
-  gpio.modeGetAsync = util.promisify(gpio.modeGet)
-  gpio.pullUpDownAsync = util.promisify(gpio.pullUpDown)
-  gpio.readAsync = util.promisify(gpio.read)
-  gpio.writeAsync = util.promisify(gpio.write)
-  Pi.readBank1Async = util.promisify(Pi.readBank1)
-  Pi.getCurrentTickAsync = util.promisify(Pi.getCurrentTick)
-  gpio.waveAddPulseAsync = util.promisify(gpio.waveAddPulse)
-  gpio.waveCreateAsync = util.promisify(gpio.waveCreate)
-  gpio.waveClearAsync = util.promisify(gpio.waveClear)
-  gpio.waveSendOnceAsync = util.promisify(gpio.waveSendOnce)
-  gpio.waveBusyAsync = util.promisify(gpio.waveBusy)
-  gpio.waveSendSyncAsync = util.promisify(gpio.waveSendSync)
-  gpio.waveNotBusyAsync = util.promisify(gpio.waveNotBusy)
-  gpio.serialReadOpenAsync = util.promisify(gpio.serialReadOpen)
-  gpio.serialReadCloseAsync = util.promisify(gpio.serialReadClose)
-  gpio.endNotifyAsync = util.promisify(gpio.endNotify)
   Pi.endAsync = util.promisify(Pi.end)
-  gpio.setServoPulsewidthAsync = util.promisify(gpio.setServoPulsewidth)
-  gpio.getServoPulsewidthAsync = util.promisify(gpio.getServoPulsewidth)
 
   ;(async function() {
     let test
@@ -130,7 +110,7 @@ function testPigpioError() {
       debug(`PASS ${err.name}, ${err.message}, ${err.api}`)
       */
       
-      try { await gpio.serialReadCloseAsync()}
+      try { await gpio.serialReadClose()}
       catch(e) {debug(`gpio ${(e?'is not':'is')} bit bang serial`)}
       
       err = await onErrorBackResolve(Pi.request, SLR, GPIO, 0, 0) // >=0
@@ -230,40 +210,40 @@ function testBasicApis() {
   return new Promise(async(resolve, reject) => {
     try {
       // modeSet/Get, pullUpDown
-      await gpio.modeSetAsync('input')
-      let mode = await gpio.modeGetAsync()
+      await gpio.modeSet('input')
+      let mode = await gpio.modeGet()
       assert.strictEqual(mode, PI_INPUT, "modeSet/Get input")
-      await gpio.pullUpDownAsync(PI_PULL_UP)
-      let level = await gpio.readAsync()
+      await gpio.pullUpDown(PI_PULL_UP)
+      let level = await gpio.read()
       assert.strictEqual(level, 1, "gpio input did not pull-up")
-      //await gpio.writeAsync(0)
-      //level = await gpio.readAsync()
+      //await gpio.write(0)
+      //level = await gpio.read()
       //assert.strictEqual(level, 1, "gpio with pull-up failed after writing 0")
-      await gpio.pullUpDownAsync(PI_PULL_DOWN)
-      level = await gpio.readAsync()
+      await gpio.pullUpDown(PI_PULL_DOWN)
+      level = await gpio.read()
       assert.strictEqual(level, 0, "gpio input did not pull-down")
-      //await gpio.writeAsync(1)
-      //level = await gpio.readAsync()
+      //await gpio.write(1)
+      //level = await gpio.read()
       //assert.strictEqual(level, 0, "gpio with pull-down failed after writing 1")
       
       // read and write
-      await gpio.modeSetAsync('output')
-      mode = await gpio.modeGetAsync()
+      await gpio.modeSet('output')
+      mode = await gpio.modeGet()
       assert.strictEqual(mode, PI_OUTPUT, "modeSet/Get output")
-      await gpio.writeAsync(1)
-      level = await gpio.readAsync()
+      await gpio.write(1)
+      level = await gpio.read()
       assert.strictEqual(level, 1, "gpio write 1") // from earlier write
-      await gpio.writeAsync(0)
-      level = await gpio.readAsync()
+      await gpio.write(0)
+      level = await gpio.read()
       assert.strictEqual(level, 0, "gpio write 0")
-      await gpio.pullUpDownAsync(PI_PUD_OFF)
+      await gpio.pullUpDown(PI_PUD_OFF)
       
       // bank1
       let g = process.env.npm_package_config_gpio
-      let bank1 = await Pi.readBank1Async()
+      let bank1 = await Pi.readBank1()
       assert.strictEqual(bank1&2**g, 0)
-      await gpio.writeAsync(1)
-      bank1 = await Pi.readBank1Async()
+      await gpio.write(1)
+      bank1 = await Pi.readBank1()
       assert.strictEqual(bank1&2**g, 2**g, "readBank1")
       
       // Todo:
@@ -273,9 +253,9 @@ function testBasicApis() {
 
         // Servo tests
         const SERVO_PULSEWIDTH=1500
-        await gpio.modeSetAsync('output')
-        await gpio.setServoPulsewidthAsync(SERVO_PULSEWIDTH)
-        let servopulsewidth = await gpio.getServoPulsewidthAsync()
+        await gpio.modeSet('output')
+        await gpio.setServoPulsewidth(SERVO_PULSEWIDTH)
+        let servopulsewidth = await gpio.getServoPulsewidth()
         assert.strictEqual(servopulsewidth, SERVO_PULSEWIDTH, "set/get ServoPulsewidth")
       }
     } catch(e) {
@@ -294,8 +274,8 @@ function testNotifications() {
     try {
       var iter = 5, level = 1, tickSent, tickNow
       var eventQ = [], ev
-      await gpio.modeSetAsync('output')
-      await gpio.writeAsync(level^1) // init to NOT level
+      await gpio.modeSet('output')
+      await gpio.write(level^1) // init to NOT level
 
       // setup notifier callback
       gpio.notify( (level, tick) => {
@@ -330,7 +310,7 @@ function testNotifications() {
         
         while (!(ev=eventQ.shift())) // Fixme: undefined when empty, not null?
           await sleep(1);
-        tickNow = await Pi.getCurrentTickAsync()
+        tickNow = await Pi.getCurrentTick()
         assert.strictEqual(ev.level, level, "Notification level")
         assert.strictEqual((ev.tick - tickSent) < (tickNow - tickSent), true, "Notification tick")
         level ^= 1 // invert level
@@ -339,9 +319,9 @@ function testNotifications() {
       
       if (eventQ.length) debug(`${eventQ.length} events remaining in queue!`)
       
-      await gpio.endNotifyAsync()
+      await gpio.endNotify()
 
-      await gpio.writeAsync(level)
+      await gpio.write(level)
       
       // verify last event is 'null event'
       ev = eventQ.shift()
@@ -365,9 +345,9 @@ function testWaves() {
   return new Promise( async(resolve, reject) => {
     var eventQ = []
     try {
-      await gpio.pullUpDownAsync(PI_PUD_OFF)
-      await gpio.modeSetAsync('output')
-      await gpio.writeAsync(0) // init
+      await gpio.pullUpDown(PI_PUD_OFF)
+      await gpio.modeSet('output')
+      await gpio.write(0) // init
       // define waves as array of value change data tuples of type: [level, time(us)]
       const W1 = [ [1,      0], [0,    250], // 250 us pulse at 0 msec
                    [1, 100000], [0, 100500], // 500 us pulse at 1 msec
@@ -395,9 +375,9 @@ function testWaves() {
       debug(triplets)
       
       // create the waves on pigpio
-      await gpio.waveClearAsync()
-      let pulses = await gpio.waveAddPulseAsync(triplets)
-      let wid = await gpio.waveCreateAsync()
+      await gpio.waveClear()
+      let pulses = await gpio.waveAddPulse(triplets)
+      let wid = await gpio.waveCreate()
       assert.strictEqual(wid, 0, "Wave ID not reset")
       debug(`wave id ${wid} created with ${pulses} pulses`)
       
@@ -416,10 +396,10 @@ function testWaves() {
       }
       // send waves then wait for completion
       debug('sending wave')
-      await gpio.waveSendOnceAsync(wid)
+      await gpio.waveSendOnce(wid)
       let wdog = setTimeout(dumpEventQandThrowError, 500)
       
-      while (await gpio.waveBusyAsync()) await sleep(25)
+      while (await gpio.waveBusy()) await sleep(25)
       clearTimeout(wdog)
       debug('waves sent')
       await sleep(200)
@@ -447,22 +427,22 @@ function testWaves() {
       /******************/ 
       debug('create two more waves')
       await gpio.waveDelete(wid)
-      pulses = await gpio.waveAddPulseAsync(triplets)
-      let wid1 = await gpio.waveCreateAsync()
+      pulses = await gpio.waveAddPulse(triplets)
+      let wid1 = await gpio.waveCreate()
       assert.strictEqual(wid1, 0, "Wave 0 did not delete")
       debug(`wave id ${wid1} created with ${pulses} pulses`)
       
-      pulses = await gpio.waveAddPulseAsync(triplets)
-      let wid2 = await gpio.waveCreateAsync()
+      pulses = await gpio.waveAddPulse(triplets)
+      let wid2 = await gpio.waveCreate()
       assert.strictEqual(wid2, 1, "Wave ID not incrementing")
       debug(`wave id ${wid2} created with ${pulses} pulses`)
       
       debug('send wave back-to-back using waveSendSync then waveNotBusy')
-      await gpio.waveSendOnceAsync(wid1)
-      await gpio.waveSendSyncAsync(wid2)
+      await gpio.waveSendOnce(wid1)
+      await gpio.waveSendSync(wid2)
       wdog = setTimeout(dumpEventQandThrowError, 1000)
       
-      await gpio.waveNotBusyAsync()
+      await gpio.waveNotBusy()
       clearTimeout(wdog)
       
       debug('waves sent')
@@ -534,7 +514,7 @@ function testSerialport() {
       sp.closeAsync = util.promisify(sp.close)
       sp.endAsync = util.promisify(sp.end)
       
-      let mode = await gpio.modeGetAsync()
+      let mode = await gpio.modeGet()
       assert.strictEqual(mode, 1, "tx incorrect mode")
       
       debug('open serialport')
@@ -548,7 +528,7 @@ function testSerialport() {
       assert.strictEqual(spStatus, true, "failed to open serialport")
       
       debug('check that all DMA control blocks are released')
-      let maxPulses = await Pi.requestAsync(35, 2, 0, 0)
+      let maxPulses = await Pi.request(35, 2, 0, 0)
       let maxChars = maxPulses / (DATABITS + 2) // databits + start + stop
       assert.strictEqual(maxChars, 1200, "waveforms are not cleared")
       debug("check the serial read buffer is clear")
@@ -564,14 +544,15 @@ function testSerialport() {
       }
       
       debug('read back serial data and compare result')
-      let wdog = setTimeout(()=> {throw("SP timeout #1 reading")}, 2000)
+      let wdog = setTimeout(()=> {throw("SP timeout #1 reading")},
+                    BUF.length*10/BAUDRATE*1000 + 1000)
       let result = ""
       while (result.length < BUF.length) {
         let res = await sp.readAsync()
         if (res) result += res  //= Buffer.concat([result, res])
       }
       clearTimeout(wdog)
-      assert.strictEqual(LOREMIPSUM, result, 0, 'SP read #1 failed, result='+result)
+      assert.strictEqual(LOREMIPSUM, result, 'SP read #1 failed')
       
       debug('Part 2) send words as string, no chunking')
       sp.write(LOREMIPSUM)
@@ -585,17 +566,16 @@ function testSerialport() {
         if (res) result += res
       }
       clearTimeout(wdog)
-      assert.strictEqual(LOREMIPSUM, result.toString(), 0, 
-          'SP read #2 failed')
+      assert.strictEqual(LOREMIPSUM, result.toString(), 'SP read #2 failed')
       
       debug('close sp, verify tx mode is still output')
       await sp.closeAsync()
-      mode = await gpio.modeGetAsync()
+      mode = await gpio.modeGet()
       assert.strictEqual(mode, 1, "tx incorrect mode")
       
       debug('end sp, verify tx mode is now input')
       await sp.endAsync()
-      mode = await gpio.modeGetAsync()
+      mode = await gpio.modeGet()
       assert.strictEqual(mode, 0, "tx mode not input after close")
 
       //done
