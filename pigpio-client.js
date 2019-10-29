@@ -20,7 +20,7 @@ WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW} = SIF.Commands
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
 
 // These command types have extended command data lengths
-const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS])
+const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS, HP])
 
 // These command types have extended response data lengths
 const extResCmdSet = new Set([SLR])
@@ -810,6 +810,14 @@ exports.pigpio = function (pi) {
       }
       this.getPWMdutyCycle = function (cb) {
         return request(GDC, gpio, 0, 0, cb)
+      }
+
+      this.setHardwarePWMdutyCycle = function (dutyCycle, freq, callback) {
+        freq = freq || 100000
+        var arrBuf = new ArrayBuffer(4)
+        var dcBuf = new Uint32Array(arrBuf, 0, 1)
+        dcBuf[0] = dutyCycle
+        return request(HP, gpio, freq, 4, callback, dcBuf)
       }
 
   // Servo pulse width
