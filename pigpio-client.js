@@ -352,7 +352,8 @@ exports.pigpio = function (pi) {
       // assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
       bufSize = 16 + extArrBuf.byteLength
       let extBuf = Buffer.from(extArrBuf) // extension
-      buf = Buffer.concat([buf, extBuf])
+        buf = Buffer.concat([buf, extBuf])
+        console.log("Sending buffer " + buf);
     }
 
     var promise;
