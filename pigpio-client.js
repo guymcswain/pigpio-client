@@ -346,7 +346,8 @@ exports.pigpio = function (pi) {
   // helper functions
   var request = (cmd, p1, p2, p3, cb, extArrBuf) => {
     var bufSize = 16
-    var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer) // basic
+      var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer) // basic
+      console.log("Sending basic buffer " + buf);
     if (extReqCmdSet.has(cmd)) {
       // following is not true for waveAddSerial!
       // assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
