@@ -346,15 +346,13 @@ exports.pigpio = function (pi) {
   // helper functions
   var request = (cmd, p1, p2, p3, cb, extArrBuf) => {
     var bufSize = 16
-      var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer) // basic
-      console.log("Sending basic buffer " + buf.length);
+    var buf = Buffer.from(Uint32Array.from([cmd, p1, p2, p3]).buffer) // basic
     if (extReqCmdSet.has(cmd)) {
       // following is not true for waveAddSerial!
       // assert.equal(extArrBuf.byteLength, p3, "incorrect p3 or array length");
       bufSize = 16 + extArrBuf.byteLength
       let extBuf = Buffer.from(extArrBuf) // extension
-        buf = Buffer.concat([buf, extBuf])
-        console.log("Sending buffer " + buf.length);
+      buf = Buffer.concat([buf, extBuf])
     }
 
     var promise;
@@ -819,7 +817,7 @@ exports.pigpio = function (pi) {
         var arrBuf = new ArrayBuffer(4)
         var dcBuf = new Uint32Array(arrBuf, 0, 1)
         dcBuf[0] = dutyCycle
-        return request(HP, gpio, freq, 4, callback, dcBuf)
+        return request(HP, gpio, freq, 4, callback, arrBuf)
       }
 
   // Servo pulse width
