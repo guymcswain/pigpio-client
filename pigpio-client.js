@@ -592,9 +592,6 @@ exports.pigpio = function (pi) {
   that.readBank1 = function (cb) {
     return that.request(BR1, 0, 0, 0, cb)
   }
-  that.hwPWM = function (gpio, freq, dc, cb) {
-    return that.request(HP, gpio, freq, dc, cb)
-  }
   that.hwClock = function (gpio, freq, cb) {
     return that.request(HC, gpio, freq, 0, cb)
   }
@@ -811,13 +808,11 @@ exports.pigpio = function (pi) {
       this.getPWMdutyCycle = function (cb) {
         return request(GDC, gpio, 0, 0, cb)
       }
-
-      this.setHardwarePWMdutyCycle = function (dutyCycle, freq, callback) {
-        freq = freq || 100000
+      this.hardwarePWM = function (frequency, dutyCycle, callback) {
         var arrBuf = new ArrayBuffer(4)
         var dcBuf = new Uint32Array(arrBuf, 0, 1)
         dcBuf[0] = dutyCycle
-        return request(HP, gpio, freq, 4, callback, arrBuf)
+        return request(HP, gpio, frequency, 4, callback, arrBuf)
       }
 
   // Servo pulse width
