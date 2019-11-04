@@ -2,10 +2,8 @@
 Pigpio-client exposes the socket interface APIs of the pigpio library using nodejs.  This allows you to connect to a Raspberry Pi, running 
 remotely or local, and manipulate its GPIO pins with javascript.  The pigpio socket interface is described more fully [here:](http://abyz.me.uk/rpi/pigpio/sif.html)
 
-New in [**v1.3.0**](https://github.com/guymcswain/pigpio-client/wiki)  
-* All APIs work with async/await and promises
-* Added `gpio.waveTxStop`  
-* Repeat forever option for `gpio.waveChainTx`.
+New in [**v1.4.0**](https://github.com/guymcswain/pigpio-client/wiki)  
+* Add hardware PWM API
 
 #### Installing and Running pigpio daemon
 A guide for installing and running pigpiod along with other useful information can be found in the [wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
@@ -136,7 +134,7 @@ PWM or servo pulses are active on the gpio they are switched off. [`gpioWrite`](
 This will stop all waveform generation. [`gpioPWM`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioPWM).  
 
 **`gpio.hardwarePWM(frequency, dutyCycle, callback)`**  Set the hardware PWM dutycycle (0-1000000) on the gpio. Only works with pins that support hardware PWM (12,13,18,19); max two channels available. PWM frequency is also specified - not likely to work above 30MHz though. Caution: 
-This will stop all waveform generation. [`gpioHardwarePWM`](http://abyz.me.uk/rpi/pigpio/cif.html#http://abyz.me.uk/rpi/pigpio/cif.html#gpioHardwarePWM).  
+This will stop all waveform generation. [`gpioHardwarePWM`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioHardwarePWM).  
 
 **`gpio.setServoPulsewidth(pulseWidth, cb)`** Starts servo pulses on gpio. Pulsewidth can be set to 0 (off) and from 500 (most anti-clockwise) to 2500 (most clockwise). Be aware that you can damage your servo when setting a too high pulseWidth. A value of 1500 (mid-point) is a good starting point to check range of your servo. [`gpioServo`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioServo)  
 
