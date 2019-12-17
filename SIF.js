@@ -1,4 +1,4 @@
-// Supported command APIs
+// socket interface APIs
 const CMDS = {
   MODES:  0,  // modeSet
   MODEG:  1,  // modeGet
@@ -6,39 +6,129 @@ const CMDS = {
   READ:   3,  // read
   WRITE:  4,  // write
   PWM:    5,  // analogWrite, setPWMdutyCycle
+  PRS:    6,
   PFS:    7,  // setPWMfrequency
   SERVO:  8,  // setServoPulsewidth
+  WDOG:   9,
   BR1:    10, // bankRead1
   BR2:    11, // (internal)
+  BC1:    12,
+  BC2:    13,
+  BS1:    14,
+  BS2:    15,
   TICK:   16, // getCurrentTick
   HWVER:  17, // hwver
+  NO:     18,
   NB:     19, // startNotifications, stopNotifications, notify
   NP:     20, // pauseNotifications
   NC:     21, // closeNotifications, end?
+  PRG:    22,
+  PFG:    23,
+  PRRG:   24,
+  HELP:   25,
   PIGPV:  26, // pigpv
   WVCLR:  27, // waveClear
   WVAG:   28, // waveAddPulse
   WVAS:   29, // waveAddSerial
+  // N/A: 30,
+  // N/A: 31,
   WVBSY:  32, // waveBusy, waveNotBusy
   WVHLT:  33, // waveTxStop
+  WVSM:   34,
+  WVSP:   35,
+  WVSC:   36,
+  TRIG:   37,
+  PROC:   38,
+  PROCD:  39,
+  PROCR:  40,
+  PROCS:  41,
   SLRO:   42, // serialReadOpen
   SLR:    43, // serialRead
   SLRC:   44, // serialReadClose
+  PROCP:  45,
+  MICS:   46,
+  MILS:   47,
+  PARSE:  48,
   WVCRE:  49, // waveCreate
   WVDEL:  50, // waveDelete
+  WVTX:   51,
+  WVTXR:  52,
+  WVNEW:  53,
+  I2CO:   54, // i2cOpen
+  I2CC:   55, // i2cClose
+  I2CRD:  56, // i2cReadDevice
+  I2CWD:  57, // i2cWriteDevice
+  I2CWQ:  58,
+  I2CRS:  59,
+  I2CWS:  60,
+  I2CRB:  61,
+  I2CWB:  62,
+  I2CRW:  63,
+  I2CWW:  64,
+  I2CRK:  65,
+  I2CWK:  66,
+  I2CRI:  67,
+  I2CWI:  68,
+  I2CPC:  69,
+  I2CPK:  70,
+  SPIO:   71,
+  SPIC:   72,
+  SPIR:   73,
+  SPIW:   74,
+  SPIX:   75,
+  SERO:   76,
+  SERC:   77,
+  SERRB:  78,
+  SERWB:  79,
+  SERR:   80,
+  SERW:   81,
+  SERDA:  82,
   GDC:    83, // getPWMdutyCycle
   GPW:    84, // getServoPulsewidth
   HC:     85, // hwClock
   HP:     86, // hwPWM
+  CF1:    87,
+  CF2:    88,
+  BI2CC:  89,
+  BI2CO:  90,
+  BI2CZ:  91,
+  I2CZ:   92,
   WVCHA:  93, // waveChainTx
   SLRI:   94, // serialReadInvert
+  CGI:    95,
+  CSI:    96,
   FG:     97, // glitch filter
+  FN:     98,
   NOIB:   99, // (internal - notify open in-band)
-  WVTXM: 100, // waveSendSync + PI_WAVE_MODE_ONE_SHOT_SYNC,
+  WVTXM:  100,// waveSendSync + PI_WAVE_MODE_ONE_SHOT_SYNC,
               // waveSendOnce + PI_WAVE_MODE_ONE_SHOT
-  WVTAT: 101, // waveTxAt
+  WVTAT:  101,// waveTxAt
+  PADS:   102,
+  PADG:   103,
+  FO:     104,
+  FC:     105,
+  FR:     106,
+  FW:     107,
+  FS:     108,
+  FL:     109,
+  SHELL:  110,
+  BSPIC:  111,
+  BSPIO:  112,
+  BSPIX:  113,
+  BSCX:   114,
+  EVM:    115,
+  EVT:    116,
+  PROCU:  117
 }
 exports.Commands = CMDS
+
+exports.extReqCmdSet = new Set("WVCHA, WVAG, SLRO, WVAS, HP, \
+TRIG, PROC, PROCR, I2CO, I2CWD, I2CWB, I2CWW, I2CRI, I2CWI, I2CPC, I2CPK, I2CWK, \
+SPIO, SPIW, SPIX, SERO, SERW, CF1, CF2, BI2CO, BI2CZ, I2CZ, FN, FO, FW, FS, FL, \
+SHELL, BSPIO, BSPIX, BSCX, PROCU".split(', ').map(i=> CMDS[i]))
+
+exports.extResCmdSet = new Set("SLR, PROCP, I2CRD, I2CRI, I2CPK, SPIR, SPIX, \
+SERR, CF2, BI2CZ, I2CZ, FR, FL, BSPIX, BSCX".split(', ').map(i=> CMDS[i]))
 
 var apiNames = {}
 Object.entries(CMDS).forEach( ([key, val]) => {
