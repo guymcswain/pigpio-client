@@ -54,6 +54,7 @@ exports.pigpio = function (pi) {
   var callbackQueue = []
   const net = require('net')
   // update info
+  if (typeof pi === 'undefined') pi = {}
   info.host = pi.host || info.host
   info.port = pi.port || info.port
   info.pipelining = pi.pipelining || info.pipelining
