@@ -226,6 +226,41 @@ possibility of data corruption.
 **`serialport.end(cb)`**  Closes rx gpio for bb_serial_read and changes gpios tx and
 dtr mode to input.  
 
+### SPI methods
+##### Experimental, these APIs may change in the future.  
+**`spi.open(baudrate, spiFlags)`**
+*baudrate* is SPI baud rate, *spiFlags* the flags, see C function documentation for spi_open
+Returns a promise.
+
+**`spi.close(callback)`**
+*callback* is optional.
+Returns a promise if no callback is given.
+
+**`spi.write(data, callback)`**
+*data* needs to be a buffer/Uint8Array.
+*callback* is optional.
+Returns a promise if no callback is given.
+
+### File methods
+##### Experimental, these APIs may change in the future.  
+**`file.open(remoteFileName, mode)`**
+*remoteFileName* string.
+*mode* number (1,2,3 aka PI_FILE_READ, PI_FILE_WRITE, PI_FILE_RW).
+Returns a promise.
+
+**`file.close(callback)`**
+*callback* is optional.
+Returns a promise if no callback is given.
+
+**`read(count)`**
+Reads *count* number of bytes.
+Returns array of bytes.
+
+**`seek(offset, from, callback)`**
+*offet* number (seek offset, uint32).
+*from* number (0,1,2 aka seek position PI_FROM_START, PI_FROM_CURRENT, PI_FROM_END).
+Returns: seek position.
+
 ### Environment Variables for Debugging
 Environment variables can be set to display messages from pigpio-client to assist 
 in troubleshooting your application.  DEBUG='pigpio' will enable status messages. 

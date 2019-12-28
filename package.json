@@ -24,7 +24,7 @@
     "pigpio", "raspberryPi", "GPIO", "waveforms", "servo", "pwm", "serial"
   ],
   "author": "Guy McSwain",
-  "contributors": ["Philipp", "Uri Shaked", "Steven Bradley" ],
+  "contributors": ["Philipp", "Uri Shaked", "Steven Bradley", "Mathias Bietz" ],
   "license": "MIT",
   "repository": {
     "type": "git",
