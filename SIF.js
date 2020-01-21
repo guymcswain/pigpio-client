@@ -26,6 +26,13 @@ const CMDS = {
   SLRC:   44, // serialReadClose
   WVCRE:  49, // waveCreate
   WVDEL:  50, // waveDelete
+  I2CO:   54, // i2cOpen
+  I2CC:   55, // i2cClose
+  I2CRD:  56, // i2cReadDevice
+  I2CWD:  57, // i2cWriteDevice
+  SPIO:   71, // spiOpen
+  SPIC:   72, // spiClose
+  SPIW:   74, // spiWrite
   GDC:    83, // getPWMdutyCycle
   GPW:    84, // getServoPulsewidth
   HC:     85, // hwClock
@@ -37,6 +44,10 @@ const CMDS = {
   WVTXM: 100, // waveSendSync + PI_WAVE_MODE_ONE_SHOT_SYNC,
               // waveSendOnce + PI_WAVE_MODE_ONE_SHOT
   WVTAT: 101, // waveTxAt
+  FO:    104, // fileOpen
+  FC:    105, // fileClose
+  FR:    106, // fileRead
+  FS:    108, // fileSeek
 }
 exports.Commands = CMDS
 
@@ -54,8 +65,14 @@ exports.Constants = {
   PI_WAVE_MODE_ONE_SHOT: 0,
   PI_WAVE_MODE_REPEAT: 1,
   PI_WAVE_MODE_ONE_SHOT_SYNC: 2,
-  PI_WAVE_MODE_REPEAT_SYNC: 3
-}
+  PI_WAVE_MODE_REPEAT_SYNC: 3,
+  PI_FILE_READ: 1,
+  PI_FILE_WRITE: 2,
+  PI_FILE_RW: 3,
+  PI_FROM_START: 0,
+  PI_FROM_CURRENT: 1,
+  PI_FROM_END: 2
+  }
 
 /* Error messages */
 exports.PigpioErrors = {

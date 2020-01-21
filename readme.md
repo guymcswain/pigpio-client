@@ -226,6 +226,72 @@ possibility of data corruption.
 **`serialport.end(cb)`**  Closes rx gpio for bb_serial_read and changes gpios tx and
 dtr mode to input.  
 
+### SPI methods
+##### Experimental, these APIs may change in the future.  
+**`pigpio.spi(channel)`**
+Initialization.
+*channel* SPI channel.
+
+**`spi.open(baudrate, spiFlags)`**
+*baudrate* is SPI baud rate, *spiFlags* the flags, see C function documentation for spi_open.
+Returns a promise.
+
+**`spi.close(callback)`**
+*callback* is optional.
+Returns a promise if no callback is given.
+
+**`spi.write(data, callback)`**
+*data* needs to be a buffer/Uint8Array.
+*callback* is optional.
+Returns a promise if no callback is given.
+
+### File methods
+##### Experimental, these APIs may change in the future.  
+**`pigpio.file()`**
+Initialization.
+
+**`file.open(remoteFileName, mode)`**
+*remoteFileName* string.
+*mode* number (1,2,3 aka PI_FILE_READ, PI_FILE_WRITE, PI_FILE_RW).
+Returns a promise.
+
+**`file.close(callback)`**
+*callback* is optional.
+Returns a promise if no callback is given.
+
+**`read(count)`**
+Reads *count* number of bytes.
+Returns array of bytes.
+
+**`seek(offset, from, callback)`**
+*offet* number (seek offset, uint32).
+*from* number (0,1,2 aka seek position PI_FROM_START, PI_FROM_CURRENT, PI_FROM_END).
+Returns: seek position.
+
+### I2C methods
+##### Experimental, these APIs may change in the future.  
+**`pigpio.i2c(bus, address)`**
+Initialization.
+*bus* the I2C bus number, e.g. 1.
+*address* the I2C address, e.g. 0x27.
+
+**`i2c.open(i2cFlags)`**
+*i2cFlags* always 0.
+Returns a promise.
+
+**`i2c.read(count)`**
+Reads *count* number of bytes using I2c raw read.
+Returns array of bytes.
+
+**`i2c.write(data, callback)`**
+*data* needs to be a buffer/Uint8Array.
+*callback* is optional.
+Returns a promise if no callback is given.
+
+**`i2c.close(callback)`**
+*callback* is optional.
+Returns a promise if no callback is given. Always return 0.
+
 ### Environment Variables for Debugging
 Environment variables can be set to display messages from pigpio-client to assist 
 in troubleshooting your application.  DEBUG='pigpio' will enable status messages. 
