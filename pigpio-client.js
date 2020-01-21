@@ -14,16 +14,17 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, SPIO, SPIC, SPIW, FO, FC, FR,
-FS } = SIF.Commands
+FS, I2CO, I2CC, I2CRD, I2CWD } = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
 
 // These command types have extended command data lengths
-const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS, HP, SPIO, SPIW, FO, FS])
+const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS, HP, SPIO, SPIW, FO, FS, I2CO,
+I2CWD])
 
 // These command types have extended response data lengths
-const extResCmdSet = new Set([SLR, FR])
+const extResCmdSet = new Set([SLR, FR, I2CRD])
 
 /* pigpio constants */
 const {PUD_OFF, PUD_DOWN, PUD_UP, PI_WAVE_MODE_ONE_SHOT, PI_WAVE_MODE_REPEAT,
@@ -1186,6 +1187,61 @@ exports.pigpio = function (pi) {
     _file.prototype = that;
     return new _file();
   }// pigpio file constructor
+
+  /*
+   * I2C functions
+   */
+  that.i2c = function (bus, address) {
+    var _i2c = function (bus, address) {
+      assert(typeof bus === 'number', "Argument 'bus' is not a number.");
+      assert(typeof address === 'number', "Argument 'address' is not a number.");
+      let handle;
+      this.open = function (i2cFlags) {
+        let arrBuf = new ArrayBuffer(4);
+        let flagsBuf = new Uint32Array(arrBuf, 0, 1);
+        flagsBuf[0] = i2cFlags;
+        let callback;
+        let promise = new Promise((resolve, reject) => {
+          callback = (error, res) => {
+            if (error) {
+              reject(error);
+            } else {
+              handle = res;
+              resolve();
+            }
+          }
+        });
+        request(I2CO, bus, address, 4, callback, arrBuf);
+        return promise;
+      };
+      this.close = function (callback) {
+        return request(I2CC, handle, 0, 0, callback) // always returns 0
+      };
+      // returns: normal array of bytes
+      this.read = function (count) {
+        let callback;
+        let promise = new Promise((resolve, reject) => {
+          callback = (error, len, ...bytes) => {
+            if (error) {
+              reject(error);
+            } else if (len === 0) {
+              resolve();
+            } else {
+              resolve(bytes);
+            }
+          }
+        });
+        request(I2CRD, handle, count, 0, callback);
+        return promise;
+      };
+      /* data needs to be a buffer/Uint8Array */
+      this.write = function (data, callback) {
+        return request(I2CWD, handle, 0, data.byteLength, callback, data);
+      };
+    }
+    _i2c.prototype = that;
+    return new _i2c(bus, address);
+  }// pigpio i2c constructor
 
   return that
 }// pigpio constructor

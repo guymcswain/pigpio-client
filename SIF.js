@@ -26,6 +26,10 @@ const CMDS = {
   SLRC:   44, // serialReadClose
   WVCRE:  49, // waveCreate
   WVDEL:  50, // waveDelete
+  I2CO:   54, // i2cOpen
+  I2CC:   55, // i2cClose
+  I2CRD:  56, // i2cReadDevice
+  I2CWD:  57, // i2cWriteDevice
   SPIO:   71, // spiOpen
   SPIC:   72, // spiClose
   SPIW:   74, // spiWrite
