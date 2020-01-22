@@ -14,7 +14,7 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW,
-I2CO, I2CC, I2CRD, I2CWD, BSCX
+I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
 } = SIF.Commands
 
 // These command types can not fail, ie, always return p3/res as positive integer
@@ -440,13 +440,22 @@ exports.pigpio = function (pi) {
         }
         handle= res
         log('opened notification socket with handle= ' + handle)
+        
+        // Enable BSC peripheral event monitoring (pigpio built-in event)
+        let arrayBuffer = new Uint8Array(4)
+        let bscEventBits = new Uint32Array(arrayBuffer, 0, 1)
+        bscEventBits[0] = 0x80000000
+        that.request(EVM, handle, bscEventBits[0], 0, (err) => {
+          if (err) {
+            log('bsc event monitoring FAILED: ' + err)
+          }
+          else log('bsc event monitoring active')
+        })
 
         // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
-          // generate an (custom) error exception on the socket(s)
           log('Pigpio keep-alive packet not received before timeout expired')
-          //notificationSocket.destroy(Error('timeout'))
-          //commandSocket.destroy() // don't need two errors generated
+          // generate an (custom) error exception on the socket(s)
           notificationSocket.disconnectHandler('timeout')
           commandSocket.disconnectHandler('timeout')
         })
@@ -468,7 +477,11 @@ exports.pigpio = function (pi) {
                 flags = buf.readUInt16LE(i + 2),
                 tick = buf.readUInt32LE(i + 4),
                 levels = buf.readUInt32LE(i + 8)
-              //oldLevels = (typeof oldLevels === 'undefined') ? levels : oldLevels
+              
+              if (flags & 0x80 && (flags & 0x1F) === 31) {
+                that.emit('EVENT_BSC')
+              }
+              
               let changes = oldLevels ^ levels
               oldLevels = levels
               for (let nob of notifiers.keys()) {
@@ -609,6 +622,45 @@ exports.pigpio = function (pi) {
     that.once('disconnected', () => {
       if (typeof cb === 'function') cb()
     })
+  }
+  
+  that.i2cOpen = function (bus, device, callback) {
+    let flags = new Uint8Array(4);  // inits to zero
+    return request(I2CO, bus, device, 4, callback, flags)
+  }
+
+  that.i2cClose = function (handle, callback) {
+    return request(I2CC, handle, 0, 0, callback)
+  }
+
+  that.i2cReadDevice = function (handle, count, callback) {
+    return request(I2CRD, handle, count, 0, callback)
+  }
+
+  that.i2cWriteDevice = function (handle, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CWD, handle, 0, data.length, callback, buffer)
+  }
+  
+  that.bscI2C = function (address, data, callback) {
+    let control
+    if (address > 0 && address < 128) {
+      control = (address<<16)|0x305
+    }
+    else {
+      control = 0
+    }
+    
+    let buffer
+    if (data && typeof data !== 'function') {
+      buffer = Buffer.from(data)
+      return request(BSCX, control, 0, data.length, callback, buffer)
+    }
+    if (typeof data === 'undefined') {
+      buffer = Buffer.from([]);
+      return request(BSCX, control, 0, 0, callback, buffer)
+    }
+    throw new MyError({api: 'bscI2C', message: 'Bad argument'})
   }
 
 /* ___________________________________________________________________________ */

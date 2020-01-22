@@ -99,6 +99,7 @@ is set to `PigpioClientError`.
   
 
 ## Methods
+Note: Unless otherwise stated, all references to gpio pin numbers use **Broadcom numbering**.
 ### pigpio methods
 
 **`pigpio.getInfo(cb)`**  Returns useful information about rpi hardware and pigpiod.  
@@ -112,6 +113,39 @@ is set to `PigpioClientError`.
 **`pigpio.destroy()`**  DEPRECATED.  Invokes socket.destroy() on both network sockets.  
 
 **`pigpio.connect()`**  Re-establishes communication with server after being disconnected.  
+
+**`pigpio.i2cOpen(bus, address, callback)`**  Return a handle for communication 
+with a device attached to a bus on the I2C peripheral.  `bus==0` uses (Broadcom) 
+gpio 0 and 1, while `bus==1` use gpio 2 and 3 for SDA and SCL respectively.  `address` takes values 1-127.
+
+**`pigpio.i2cClose(handle, callback)`**  Close the I2C device associated with handle.
+
+**`pigpio.i2cReadDevice(handle, count, callback)`**  Read count bytes from the i2c 
+device referred by handle.  Returns tuple (error, count, data).  `error` is 0 on 
+success or an error code.  `count` is the number of bytes read.  `data` is a buffer.
+
+**`pigpio.i2cWriteDevice(handle, data, callback)`**  Write data to the i2c device 
+referred by handle.  `data` is a byte array or utf8 string.  Returns 0 if 
+OK, otherwise an error code.  
+
+**`pigpio.bscI2C(address, data, callback)`**  Transfer data to/from the BSC I2C 
+slave peripheral using gpio 18 (SDA) and 19 (SCL).  The data bytes (if any) are 
+written to the BSC transmit FIFO and the bytes in the BSC receive FIFO are 
+returned.  The depth of the FIFO is 32 bytes.
+
+This function is not available on the BCM2711 (e.g. as used in the Pi4B).  
+
+`address` is a non-zero 7-bit i2c address the slave device will respond to.  
+If `address` is 0, the BSC peripheral is turned off and gpio 18/19 are reset to 
+input mode.  
+
+`data`, optional, is a byte array or utf8 string up to 512 bytes.  
+
+The return value is a byte array containing: A byte-count byte followed by 4 
+status bytes followed by the data bytes read from the RX FIFO.
+
+The `EVENT_BSC` event is emitted when data is available to read from the BSC I2C 
+device.
 
 
 ### gpio basic methods
