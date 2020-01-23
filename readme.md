@@ -2,8 +2,8 @@
 Pigpio-client exposes the socket interface APIs of the pigpio library using nodejs.  This allows you to connect to a Raspberry Pi, running 
 remotely or local, and manipulate its GPIO pins with javascript.  The pigpio socket interface is described more fully [here:](http://abyz.me.uk/rpi/pigpio/sif.html)
 
-New in [**v1.4.0**](https://github.com/guymcswain/pigpio-client/wiki)  
-* Add hardware PWM API
+New in [**v1.5.0**](https://github.com/guymcswain/pigpio-client/wiki)  
+* Add I2C peripheral APIs
 
 #### Installing and Running pigpio daemon
 A guide for installing and running pigpiod along with other useful information can be found in the [wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
