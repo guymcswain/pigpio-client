@@ -14,7 +14,7 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW,
-I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
+I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM, BI2CO, BI2CZ, BI2CC
 } = SIF.Commands
 
 // These command types can not fail, ie, always return p3/res as positive integer
@@ -41,7 +41,7 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.5.0',
+  version: '1.5.0-bbi2c',
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
@@ -661,6 +661,46 @@ exports.pigpio = function (pi) {
       return request(BSCX, control, 0, 0, callback, buffer)
     }
     throw new MyError({api: 'bscI2C', message: 'Bad argument'})
+  }
+
+  that.bbI2cOpen = function (sda, scl, baud, callback) {
+
+    return new Promise((resolve, reject) => {
+      let extParam = new Uint32Array(1)
+      extParam[0] = baud
+      let extBuf = Buffer.from(extParam.buffer)
+
+      request(BI2CO, sda, scl, 4, null, extBuf).then( () => {
+        let i2c = _bbI2cObject(sda, scl)
+        if (callback==='function') return callback(null, i2c)
+        return resolve(i2c);
+      }).catch( e => {
+        if (callback === 'function') return callback(e)
+        reject(e)
+      });
+
+    });
+
+    function _bbI2cObject (sda, scl) {
+      let END=0, START=2, STOP=3, ADDR=4, READ=6, WRITE=7
+
+      return {
+
+        write: (addr, data, cb) => {
+          let hbuf = Buffer.from([ADDR,addr,START,WRITE,data.length])
+          let dbuf = Buffer.from(data)
+          let tbuf = Buffer.from([STOP,END])
+          return request(BI2CZ, sda, 0, 7+data.length, cb, Buffer.concat([hbuf, dbuf, tbuf],7+data.length))
+        },
+
+        read: (addr, count, cb) => {
+          let buf = Buffer.from([ADDR,addr,START,READ,count,STOP,END])
+          return request(BI2CZ, sda, 0, buf.length, cb, buf)
+        },
+
+        close: (cb) => {return request(BI2CC, sda, 0, 0, cb)}
+      }
+    }
   }
 
 /* ___________________________________________________________________________ */

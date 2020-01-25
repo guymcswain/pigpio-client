@@ -2,8 +2,8 @@
 Pigpio-client exposes the socket interface APIs of the pigpio library using nodejs.  This allows you to connect to a Raspberry Pi, running 
 remotely or local, and manipulate its GPIO pins with javascript.  The pigpio socket interface is described more fully [here:](http://abyz.me.uk/rpi/pigpio/sif.html)
 
-New in [**v1.5.0**](https://github.com/guymcswain/pigpio-client/wiki)  
-* Add I2C peripheral APIs
+New in [**v1.5.0-bbi2c**](https://github.com/guymcswain/pigpio-client/wiki)  
+* Add Bit-bang I2C APIs
 
 #### Installing and Running pigpio daemon
 A guide for installing and running pigpiod along with other useful information can be found in the [wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
@@ -80,8 +80,10 @@ specified by gpio_pin. An error will be thrown if gpio_pin is not a valid user G
 
 **`pigpio.serialport(rx,tx,dtr)`**  Return a serialport object constructed from GPIO 
 pins for rx, tx and dtr.  Rx and Tx may use the same pin for a loop-back.  DTR pin 
-is optional.  An error will be thrown if the pins are not valid user GPIO.  Constructing
-a serialport object will clear all waveforms.
+is optional.  An error will be thrown if the pins are not valid user GPIO.   Constructing a serialport object will clear all waveforms.  
+
+**`pigpio.bbI2cOpen(sda, scl, baud)`**  Returns a bit-bang I2C object constructed 
+from gpios specified by `sda` and `scl`.  Accepts `baud` rates from 50 to 500,000.
 
 ## Events
 **`'connected'`**  Emitted after both command and notification sockets are connected 
@@ -131,7 +133,7 @@ OK, otherwise an error code.
 **`pigpio.bscI2C(address, data, callback)`**  Transfer data to/from the BSC I2C 
 slave peripheral using gpio 18 (SDA) and 19 (SCL).  The data bytes (if any) are 
 written to the BSC transmit FIFO and the bytes in the BSC receive FIFO are 
-returned.  The depth of the FIFO is 32 bytes.
+returned.  The depth of the FIFO is 16 bytes.
 
 This function is not available on the BCM2711 (e.g. as used in the Pi4B).  
 
@@ -236,6 +238,17 @@ of length *length*. [`gpioSerialRead`](http://abyz.me.uk/rpi/pigpio/cif.html#gpi
 **`gpio.serialReadInvert(mode, cb)`**  Mode is 'invert' || 'normal'. [`gpioSerialReadInvert`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioSerialReadInvert)  
 
 **`waveAddSerial(baud,bits,delay,data,cb)`**  - [`gpioWaveAddSerial`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioWaveAddSerial)
+
+### Bit-bang I2C methods
+**`i2c.write(addr, data, callback)`**  Writes byte-array or utf8 string `data` to 
+`addr` on the bus.  The data length must be less than 256 bytes and the address is 
+limited to 7-bits (less than 128).  
+
+**`i2c.read(addr, count, callback)`**  Reads `count` bytes from the I2C bus and 
+return a tuple of the number of bytes read and an byte-array containing the data.
+
+**`i2c.close(callback)`**  Stops the bit-banging and returns the gpios to their 
+previous mode.
 
 ### serialport methods 
 ##### Experimental, these APIs may change in the future.  
