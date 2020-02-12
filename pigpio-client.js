@@ -198,8 +198,10 @@ exports.pigpio = function (pi) {
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
-      if ( e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH'
-                || (e.code === 'ECONNRESET' ) && sock.connecting) {
+      if ( e.code === 'ECONNREFUSED'
+        || e.code === 'EHOSTUNREACH'
+        || e.code === 'ENETUNREACH' || e.code === 'EAI_AGAIN'
+        || (e.code === 'ECONNRESET' ) && sock.connecting) {
         if (sock.retryTimer) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
