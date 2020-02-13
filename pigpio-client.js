@@ -198,25 +198,39 @@ exports.pigpio = function (pi) {
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
-      if ( e.code === 'ECONNREFUSED'
-        || e.code === 'EHOSTUNREACH'
-        || e.code === 'ENETUNREACH' || e.code === 'EAI_AGAIN'
-        || (e.code === 'ECONNRESET' ) && sock.connecting) {
+
+      if (sock.pending /*&& sock.connecting)*/)
+      {
         if (sock.retryTimer) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
           log(`retry connection on ${sock.name} in 5 sec ...`)
+
+          // For each error code, inform user of retry timeout activity.
+          if ( !sock.retryEcode && sock.name === 'commandSocket') {
+            sock.retryEcode = e.code
+            console.log(`${e.code}, retrying ${info.host}:${info.port} ...`)
+          }
+        }
+
+        // Inform user/app that connection could not be established.
+        else if (sock.name === 'commandSocket') {
+          console.log(`Unable to connect to pigpiod.  No retry timeout option `
+            + 'was specified.  Verify that daemon is running from '
+            + `${info.host}:${info.port}.`
+          )
+
+          that.emit('error', new MyError(e.message))
         }
       }
 
-      else if ( e.code === 'ECONNRESET' && !sock.connecting ) {
-        return sock.disconnectHandler(`${sock.name} ECONNRESET, disconnecting`)
+      else if ( !sock.pending) {
+        return sock.disconnectHandler(`${sock.name}: ${e.code}, ${e.message}`)
       }
 
       else {
-        // On any other error, throw
-        // socket.destroy(error) is caught here as well?
+        // On any other socket condition, throw
         that.emit('error', new MyError('Unhandled socket error, '+e.message))
       }
     }
@@ -226,17 +240,11 @@ exports.pigpio = function (pi) {
   function returnCloseHandler(sock) {
     var handler = function (had_error) {
       if (had_error) {
+        // Error handler has already called disconnectHandler as needed.
         log(`${sock.name} closed on error`)
-        if (sock.name === 'commandSocket' && !sock.retryTimer)
-          console.log(
-            "Unable to connect to pigpiod and no retry timeout option specified."
-            + "  Process exiting.  Check the host address/port and if the daemon"
-            + " is running."
-          )
       }
 
-      // Close event without error indicates peer has closed connection.  We must
-      // disconnect in this case since the state of pigpiod may have changed.
+      // If closed without error, must call disconnectHandler from here.
       else {
         log(`${sock.name} closed`)
         if (info[sock.name]) sock.disconnectHandler('closed unexpectedly')
