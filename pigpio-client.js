@@ -85,12 +85,16 @@ exports.pigpio = function (pi) {
           clearTimeout(sock.reconnectTimer)
           sock.reconnectTimer = null
         }
-        sock.retryTimer = null
+
         log(`${sock.name} retry timeout`)
         // hack: we don't want two error events
         if (sock.name === 'commandSocket')
-          that.emit('error', new MyError('Could not connect, retry timeout expired'))
+          that.emit('error', new MyError({
+            api: 'connect',
+            message: 'Could not connect, retry timeout expired.'
+          }))
       }, info.timeout * 60 * 1000)
+      sock.retryTimer.unref()
     }
   }
 
@@ -178,7 +182,7 @@ exports.pigpio = function (pi) {
       }
       if (sock.name === 'notificationSocket') {
         sock.setTimeout(0)
-        sock.removeAllListeners('timeout')
+
       }
       log(`${sock.name} destroyed due to ${reason}`)
       info[sock.name] = false // mark socket disconnected
@@ -205,6 +209,7 @@ exports.pigpio = function (pi) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
+          sock.reconnectTimer.unref()
           log(`retry connection on ${sock.name} in 5 sec ...`)
 
           // For each error code, inform user of retry timeout activity.
@@ -446,12 +451,12 @@ exports.pigpio = function (pi) {
           else log('bsc event monitoring active')
         })
 
-        // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
+        // Pigpio keep-alive:  Wait options.timeout minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
           log('Pigpio keep-alive packet not received before timeout expired')
           // generate an (custom) error exception on the socket(s)
-          notificationSocket.disconnectHandler('timeout')
-          commandSocket.disconnectHandler('timeout')
+          notificationSocket.disconnectHandler('pigpio keep-alive timeout')
+          commandSocket.disconnectHandler('pigpio keep-alive timeout')
         })
 
         // listener that monitors all gpio bits
