@@ -41,7 +41,7 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.5.0',
+  version: '1.5.1',
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
