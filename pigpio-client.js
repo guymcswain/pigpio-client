@@ -63,14 +63,19 @@ exports.pigpio = function (pi) {
   var that = new MyEmitter() // can't use prototypal inheritance
 
 // Command socket
-  var commandSocket = new net.Socket()
-  commandSocket.name = 'commandSocket'
-  commandSocket.on('connect', connectHandler(commandSocket))
-  commandSocket.reconnectHandler = returnErrorHandler(commandSocket)
-  commandSocket.disconnectHandler = disconnector(commandSocket)
-  commandSocket.closeHandler = returnCloseHandler(commandSocket)
-  commandSocket.addListener('error', commandSocket.reconnectHandler)
-  commandSocket.addListener('close', commandSocket.closeHandler)
+  var commandSocket = initSocket('commandSocket')
+  function initSocket (name) {
+    let socket = new net.Socket()
+    socket.name = name
+    socket.on('connect', connectHandler(socket))
+    socket.reconnectHandler = returnErrorHandler(socket)
+    socket.disconnectHandler = disconnector(socket)
+    socket.closeHandler = returnCloseHandler(socket)
+    socket.addListener('error', socket.reconnectHandler)
+    socket.addListener('close', socket.closeHandler)
+
+    return socket
+  }
   connect(commandSocket)
 
   function startRetryTimer(sock) {
@@ -80,22 +85,21 @@ exports.pigpio = function (pi) {
           clearTimeout(sock.reconnectTimer)
           sock.reconnectTimer = null
         }
-        sock.retryTimer = null
+
         log(`${sock.name} retry timeout`)
         // hack: we don't want two error events
         if (sock.name === 'commandSocket')
-          that.emit('error', new MyError('Could not connect, retry timeout expired'))
+          that.emit('error', new MyError({
+            api: 'connect',
+            message: 'Could not connect, retry timeout expired.'
+          }))
       }, info.timeout * 60 * 1000)
+      sock.retryTimer.unref()
     }
   }
 
   function connect(sock) {
     startRetryTimer(sock)
-    // Fixme: is this necessary?
-    //{
-    //sock.removeAllListeners('error')
-    //sock.addListener('error', sock.reconnectHandler)
-    //}
     sock.connect(info.port, info.host)
   }
 
@@ -109,8 +113,6 @@ exports.pigpio = function (pi) {
   function connectHandler(sock) {
     var handler = function() {
       stopRetryTimer(sock)
-      //sock.removeAllListeners('error')
-      //sock.addListener('error', sock.disconnectHandler)
 
       if (typeof info[sock.name] === 'undefined') {
         log(`${sock.name} connected`)
@@ -148,6 +150,7 @@ exports.pigpio = function (pi) {
           info.pigpioVersion = res
 
           request(HWVER, 0, 0, 0, (err, version) => {
+
             info.hwVersion = version
             if ((version >= 2) && (version <= 3)) {
               info.hardware_type = 1
@@ -179,7 +182,7 @@ exports.pigpio = function (pi) {
       }
       if (sock.name === 'notificationSocket') {
         sock.setTimeout(0)
-        sock.removeAllListeners('timeout')
+
       }
       log(`${sock.name} destroyed due to ${reason}`)
       info[sock.name] = false // mark socket disconnected
@@ -199,23 +202,40 @@ exports.pigpio = function (pi) {
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
-      if ( e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH'
-                || (e.code === 'ECONNRESET' ) && sock.connecting) {
+
+      if (sock.pending /*&& sock.connecting)*/)
+      {
         if (sock.retryTimer) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
+          sock.reconnectTimer.unref()
           log(`retry connection on ${sock.name} in 5 sec ...`)
+
+          // For each error code, inform user of retry timeout activity.
+          if ( !sock.retryEcode && sock.name === 'commandSocket') {
+            sock.retryEcode = e.code
+            console.log(`${e.code}, retrying ${info.host}:${info.port} ...`)
+          }
+        }
+
+        // Inform user/app that connection could not be established.
+        else if (sock.name === 'commandSocket') {
+          console.log(`Unable to connect to pigpiod.  No retry timeout option `
+            + 'was specified.  Verify that daemon is running from '
+            + `${info.host}:${info.port}.`
+          )
+
+          that.emit('error', new MyError(e.message))
         }
       }
 
-      else if ( e.code === 'ECONNRESET' && !sock.connecting ) {
-        return sock.disconnectHandler(`${sock.name} ECONNRESET, disconnecting`)
+      else if ( !sock.pending) {
+        return sock.disconnectHandler(`${sock.name}: ${e.code}, ${e.message}`)
       }
 
       else {
-        // On any other error, throw
-        // socket.destroy(error) is caught here as well?
+        // On any other socket condition, throw
         that.emit('error', new MyError('Unhandled socket error, '+e.message))
       }
     }
@@ -225,17 +245,11 @@ exports.pigpio = function (pi) {
   function returnCloseHandler(sock) {
     var handler = function (had_error) {
       if (had_error) {
+        // Error handler has already called disconnectHandler as needed.
         log(`${sock.name} closed on error`)
-        if (sock.name === 'commandSocket' && !sock.retryTimer)
-          console.log(
-            "Unable to connect to pigpiod and no retry timeout option specified."
-            + "  Process exiting.  Check the host address/port and if the daemon"
-            + " is running."
-          )
       }
 
-      // Close event without error indicates peer has closed connection.  We must
-      // disconnect in this case since the state of pigpiod may have changed.
+      // If closed without error, must call disconnectHandler from here.
       else {
         log(`${sock.name} closed`)
         if (info[sock.name]) sock.disconnectHandler('closed unexpectedly')
@@ -246,104 +260,103 @@ exports.pigpio = function (pi) {
 
   var resBuf = Buffer.allocUnsafe(0)  // see responseHandler()
 
-  commandSocket.on('data', (chunk) => {
-    var responseHandler = () => {
-      /*  Extract response parameter (along with extended params) from response buffer
-      (resBuf), return response as array argument to queued callback function in
-      'callbackQueue.'  p3 contains either error code (if negative) OR response OR
-      length of extended parameters.  Decoding cmd tells us if p3 is extended type of
-      command. Partial response is saved to be used in subsequent 'data' callbacks.
-      If response buffer contains more than a single response, the remainder will
-      either be saved or called recursively.
-      */
-      const resArrBuf = new Uint8Array(resBuf).buffer  // creates an Array Buffer copy
-      const cmd = new Uint32Array(resArrBuf, 0, 1)  // view of first 4 32bit params
-      var extLen  // length of extended response
-      var res = []
-      var err = null
-      if (canNeverFailCmdSet.has(cmd[0])) {
-        // case p3 is uint32, always 16 length
-        var p3 = new Uint32Array(resArrBuf, 12, 1)
-        extLen = 0
-        // res[0] = p3[0];
-      } else {
-        var p3 = new Int32Array(resArrBuf, 12, 1)
-        if (p3[0] > 0) {
-          // is this extended response?
-          if (extResCmdSet.has(cmd[0])) {
-            extLen = p3[0] // p3 is length of extension
-            // is response buffer incomplete?
-            if (resArrBuf.byteLength < (extLen + 16)) { return }  // wait for more data
-            else {
-              let uint8Arr = new Uint8Array(resArrBuf, 16, extLen)
-              for (let i = 0; i < extLen; i++) { res[i] = uint8Arr[i] }
-            }
-          } else {
-            // res[0] = p3[0]; // p3 is normal response param
-            extLen = 0
+  commandSocket.on('data', commandSocketDataHandler)
+
+  function commandSocketDataHandler (chunk) {
+    resBuf = Buffer.concat([resBuf, chunk])
+    if (resBuf.length >= 16) responseHandler()
+  }
+
+  function responseHandler () {
+    /*  Extract response parameter (along with extended params) from response buffer
+    (resBuf), return response as array argument to queued callback function in
+    'callbackQueue.'  p3 contains either error code (if negative) OR response OR
+    length of extended parameters.  Decoding cmd tells us if p3 is extended type of
+    command. Partial response is saved to be used in subsequent 'data' callbacks.
+    If response buffer contains more than a single response, the remainder will
+    either be saved or called recursively.
+    */
+    const resArrBuf = new Uint8Array(resBuf).buffer  // creates an Array Buffer copy
+    const cmd = new Uint32Array(resArrBuf, 0, 1)  // view of first 4 32bit params
+    var extLen  // length of extended response
+    var res = []
+    var err = null
+    if (canNeverFailCmdSet.has(cmd[0])) {
+      // case p3 is uint32, always 16 length
+      var p3 = new Uint32Array(resArrBuf, 12, 1)
+      extLen = 0
+      // res[0] = p3[0];
+    } else {
+      var p3 = new Int32Array(resArrBuf, 12, 1)
+      if (p3[0] > 0) {
+        // is this extended response?
+        if (extResCmdSet.has(cmd[0])) {
+          extLen = p3[0] // p3 is length of extension
+          // is response buffer incomplete?
+          if (resArrBuf.byteLength < (extLen + 16)) { return }  // wait for more data
+          else {
+            let uint8Arr = new Uint8Array(resArrBuf, 16, extLen)
+            for (let i = 0; i < extLen; i++) { res[i] = uint8Arr[i] }
           }
-        } else { // p3 is less than (error) or equal (normal) to zero
+        } else {
+          // res[0] = p3[0]; // p3 is normal response param
           extLen = 0
-          if (p3[0] < 0) {
-            err = p3[0] // param[3] contains error code (negative)
-          }
+        }
+      } else { // p3 is less than (error) or equal (normal) to zero
+        extLen = 0
+        if (p3[0] < 0) {
+          err = p3[0] // param[3] contains error code (negative)
         }
       }
-      // prepare the error object -> FIXME, create an error subclass?
-      let error = null
-      if (err) {
-        error = new MyError({
-          name: "pigpioError",
-          code: ERR[err].code,
-          message: ERR[err].message,
-          api: API[cmd[0]]
-        })
-        //error.code = ERR[err].code
-        //error.message = `${ERR[err].message}, api: ${API[cmd[0]]}`
-      }
+    }
+    // prepare the error object -> FIXME, create an error subclass?
+    let error = null
+    if (err) {
+      error = new MyError({
+        name: "pigpioError",
+        code: ERR[err].code,
+        message: ERR[err].message,
+        api: API[cmd[0]]
+      })
+      //error.code = ERR[err].code
+      //error.message = `${ERR[err].message}, api: ${API[cmd[0]]}`
+    }
 
+    if (process.env.PIGPIO) {
+      let b = resBuf.slice(0, 16).toJSON().data
+      console.log('response= ', ...b)
+      if (extLen > 0) {
+        let bx = resBuf.slice(16).toJSON().data
+        console.log('extended params= ', ...bx)
+      }
+    }
+    resBuf = resBuf.slice(extLen + 16) // leave remainder for later processing
+    // process the response callback
+    var callback = callbackQueue.shift() // FIXME: test for queue underflow
+    if (typeof callback === 'function') callback(error, p3[0], ...res)
+    else {
+      if (error) {
+        that.emit('error', error)
+      }
+    }
+    // does response buffer contain another response (potentially)?
+    if (resBuf.length >= 16) responseHandler() // recurse
+    // check requestQueue for more requests to send
+    if (requestQueue.length > 0 && (info.pipelining || callbackQueue.length === 0)) {
+      var req = requestQueue.shift()
+      commandSocket.write(req.buffer)
+      callbackQueue.push(req.callback)
       if (process.env.PIGPIO) {
-        let b = resBuf.slice(0, 16).toJSON().data
-        console.log('response= ', ...b)
-        if (extLen > 0) {
-          let bx = resBuf.slice(16).toJSON().data
+        let b = req.buffer.slice(0, 16).toJSON().data// w/o ext params!
+        console.log('deferred request= ', ...b)
+        if (req.buffer.length > 16) {
+          let bx = req.buffer.slice(16).toJSON().data // w/ext
           console.log('extended params= ', ...bx)
         }
       }
-      resBuf = resBuf.slice(extLen + 16) // leave remainder for later processing
-      // process the response callback
-      var callback = callbackQueue.shift() // FIXME: test for queue underflow
-      if (typeof callback === 'function') callback(error, p3[0], ...res)
-      else {
-        if (error) {
-          that.emit('error', error)
-        }
-      }
-      // does response buffer contain another response (potentially)?
-      if (resBuf.length >= 16) responseHandler() // recurse
-      // check requestQueue for more requests to send
-      if (requestQueue.length > 0 && (info.pipelining || callbackQueue.length === 0)) {
-        var req = requestQueue.shift()
-        commandSocket.write(req.buffer)
-        callbackQueue.push(req.callback)
-        if (process.env.PIGPIO) {
-          let b = req.buffer.slice(0, 16).toJSON().data// w/o ext params!
-          console.log('deferred request= ', ...b)
-          if (req.buffer.length > 16) {
-            let bx = req.buffer.slice(16).toJSON().data // w/ext
-            console.log('extended params= ', ...bx)
-          }
-        }
-      }
-    } // responseHandler
+    }
+  } // responseHandler
 
-    resBuf = Buffer.concat([resBuf, chunk])
-    // if (process.env.PIGPIO) {
-    //  let b = resBuf.toJSON().data;
-    //  console.log("response=\n",...b);
-    // }
-    if (resBuf.length >= 16) responseHandler()
-  })
 
   // helper functions
   var request = (cmd, p1, p2, p3, cb, extArrBuf) => {
@@ -389,27 +402,13 @@ exports.pigpio = function (pi) {
     return promise
   } // request()
 
-  var pigpv = (callback) => {
-    return request(PIGPV, 0, 0, 0, callback)
-  }
-
-  var hwver = (callback) => {
-    return request(HWVER, 0, 0, 0, callback)
-  }
 
 // Notifications socket = ToDo: check for notification errors response (res[3])
   var handle
   var chunklet = Buffer.allocUnsafe(0) // notify chunk fragments
   var oldLevels
 
-  var notificationSocket = new net.Socket()
-  notificationSocket.name = 'notificationSocket'
-  notificationSocket.on('connect', connectHandler(notificationSocket))
-  notificationSocket.reconnectHandler = returnErrorHandler(notificationSocket)
-  notificationSocket.disconnectHandler = disconnector(notificationSocket)
-  notificationSocket.addListener('error', notificationSocket.reconnectHandler)
-  notificationSocket.closeHandler = returnCloseHandler(notificationSocket)
-  notificationSocket.addListener('close', notificationSocket.closeHandler)
+  var notificationSocket = initSocket('notificationSocket')
   connect(notificationSocket)
 
   function notificationSocketConnectHandler(done) {
@@ -452,72 +451,80 @@ exports.pigpio = function (pi) {
           else log('bsc event monitoring active')
         })
 
-        // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
+        // Pigpio keep-alive:  Wait options.timeout minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
           log('Pigpio keep-alive packet not received before timeout expired')
           // generate an (custom) error exception on the socket(s)
-          notificationSocket.disconnectHandler('timeout')
-          commandSocket.disconnectHandler('timeout')
+          notificationSocket.disconnectHandler('pigpio keep-alive timeout')
+          commandSocket.disconnectHandler('pigpio keep-alive timeout')
         })
 
         // listener that monitors all gpio bits
-        notificationSocket.on('data', function (chunk) {
-          if (process.env.PIGPIO) {
-            console.log(`notification received: chunk size = ${chunk.length}`)
-          }
-          var buf = Buffer.concat([chunklet, chunk])
-          let remainder = buf.length % 12
-          chunklet = buf.slice(buf.length-remainder)
-
-          // skip if buf is a fragment
-          if (buf.length / 12 > 0) {
-            // process notifications, issue callbacks to registerd notifier if bits have changed
-            for (let i = 0; i < buf.length - remainder; i += 12) {
-              let seqno = buf.readUInt16LE(i + 0),
-                flags = buf.readUInt16LE(i + 2),
-                tick = buf.readUInt32LE(i + 4),
-                levels = buf.readUInt32LE(i + 8)
-              
-              if (flags & 0x80 && (flags & 0x1F) === 31) {
-                that.emit('EVENT_BSC')
-              }
-              
-              let changes = oldLevels ^ levels
-              oldLevels = levels
-              for (let nob of notifiers.keys()) {
-                if (nob.bits & changes) {
-                  nob.func(levels, tick)
-                }
-              }
-            }
-          }
-        })
+        notificationSocket.on('data', notificationSocketDataHandler)
         done() // connect handler completed callback
       })
     })
   }
 
+  function notificationSocketDataHandler (chunk) {
+    if (process.env.PIGPIO) {
+      console.log(`notification received: chunk size = ${chunk.length}`)
+    }
+    var buf = Buffer.concat([chunklet, chunk])
+    let remainder = buf.length % 12
+    chunklet = buf.slice(buf.length-remainder)
+
+    // skip if buf is a fragment
+    if (buf.length / 12 > 0) {
+      // process notifications, issue callbacks to registerd notifier if bits have changed
+      for (let i = 0; i < buf.length - remainder; i += 12) {
+        let seqno = buf.readUInt16LE(i + 0),
+          flags = buf.readUInt16LE(i + 2),
+          tick = buf.readUInt32LE(i + 4),
+          levels = buf.readUInt32LE(i + 8)
+
+        if (flags & 0x80 && (flags & 0x1F) === 31) {
+          that.emit('EVENT_BSC')
+        }
+
+        let changes = oldLevels ^ levels
+        oldLevels = levels
+        for (let nob of notifiers.keys()) {
+          if (nob.bits & changes) {
+            nob.func(levels, tick)
+          }
+        }
+      }
+    }
+  }
+
   notificationSocket.on('end', function () {
       log('pigpio notification socket end received')
   })
-/*
-  notificationSocket.on('close', function (had_error) {
-    if (had_error) {
-      log('pigpio notification socket closed with error: ', had_error)
-    }
-    else {
-      log('pigpio notification socket closed without error')
-      if (info.notificationSocket) notificationSocket.disconnectHandler('called from close')
-    }
-  })
-*/
+
   /** * Public Methods ***/
 
   that.request = request
 
   that.connect = function() {
+    if (commandSocket.destroy) {
+      log('Remove all listeners and destroy command socket.')
+      commandSocket.removeAllListeners()
+      commandSocket.destroy()
+    }
+    commandSocket = initSocket('commandSocket')
+    commandSocket.addListener('data', commandSocketDataHandler)
     connect(commandSocket)
+
+    if (notificationSocket.destroy) {
+      log('Remove all listeners and destroy notification socket.')
+      notificationSocket.removeAllListeners()
+      notificationSocket.destroy()
+    }
+    notificationSocket = initSocket('notificationSocket')
+    notificationSocket.addListener('data', notificationSocketDataHandler)
     connect(notificationSocket)
+
   }
 
 // Notifications

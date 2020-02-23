@@ -1,6 +1,6 @@
 {
   "name": "pigpio-client",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "A nodejs client for pigpio socket interface.",
   "main": "pigpio-client.js",
   "directories": {
@@ -27,7 +27,8 @@
     "waveforms",
     "servo",
     "pwm",
-    "serial"
+    "serial",
+    "bsc-slave"
   ],
   "author": "Guy McSwain",
   "contributors": [
