@@ -48,6 +48,7 @@ const CMDS = {
   FC:    105, // fileClose
   FR:    106, // fileRead
   FS:    108, // fileSeek
+  EVM:    115,
 }
 exports.Commands = CMDS
 

@@ -14,7 +14,7 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, SPIO, SPIC, SPIW, FO, FC, FR,
-FS, I2CO, I2CC, I2CRD, I2CWD } = SIF.Commands
+FS, I2CO, I2CC, I2CRD, I2CWD, EVM } = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
@@ -44,7 +44,7 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.4.0',
+  version: '1.5.1',
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
@@ -57,6 +57,7 @@ exports.pigpio = function (pi) {
   var callbackQueue = []
   const net = require('net')
   // update info
+  if (typeof pi === 'undefined') pi = {}
   info.host = pi.host || info.host
   info.port = pi.port || info.port
   info.pipelining = pi.pipelining || info.pipelining
@@ -65,14 +66,19 @@ exports.pigpio = function (pi) {
   var that = new MyEmitter() // can't use prototypal inheritance
 
 // Command socket
-  var commandSocket = new net.Socket()
-  commandSocket.name = 'commandSocket'
-  commandSocket.on('connect', connectHandler(commandSocket))
-  commandSocket.reconnectHandler = returnErrorHandler(commandSocket)
-  commandSocket.disconnectHandler = disconnector(commandSocket)
-  commandSocket.closeHandler = returnCloseHandler(commandSocket)
-  commandSocket.addListener('error', commandSocket.reconnectHandler)
-  commandSocket.addListener('close', commandSocket.closeHandler)
+  var commandSocket = initSocket('commandSocket')
+  function initSocket (name) {
+    let socket = new net.Socket()
+    socket.name = name
+    socket.on('connect', connectHandler(socket))
+    socket.reconnectHandler = returnErrorHandler(socket)
+    socket.disconnectHandler = disconnector(socket)
+    socket.closeHandler = returnCloseHandler(socket)
+    socket.addListener('error', socket.reconnectHandler)
+    socket.addListener('close', socket.closeHandler)
+
+    return socket
+  }
   connect(commandSocket)
 
   function startRetryTimer(sock) {
@@ -82,22 +88,21 @@ exports.pigpio = function (pi) {
           clearTimeout(sock.reconnectTimer)
           sock.reconnectTimer = null
         }
-        sock.retryTimer = null
+
         log(`${sock.name} retry timeout`)
         // hack: we don't want two error events
         if (sock.name === 'commandSocket')
-          that.emit('error', new MyError('Could not connect, retry timeout expired'))
+          that.emit('error', new MyError({
+            api: 'connect',
+            message: 'Could not connect, retry timeout expired.'
+          }))
       }, info.timeout * 60 * 1000)
+      sock.retryTimer.unref()
     }
   }
 
   function connect(sock) {
     startRetryTimer(sock)
-    // Fixme: is this necessary?
-    //{
-    //sock.removeAllListeners('error')
-    //sock.addListener('error', sock.reconnectHandler)
-    //}
     sock.connect(info.port, info.host)
   }
 
@@ -111,8 +116,6 @@ exports.pigpio = function (pi) {
   function connectHandler(sock) {
     var handler = function() {
       stopRetryTimer(sock)
-      //sock.removeAllListeners('error')
-      //sock.addListener('error', sock.disconnectHandler)
 
       if (typeof info[sock.name] === 'undefined') {
         log(`${sock.name} connected`)
@@ -150,6 +153,7 @@ exports.pigpio = function (pi) {
           info.pigpioVersion = res
 
           request(HWVER, 0, 0, 0, (err, version) => {
+
             info.hwVersion = version
             if ((version >= 2) && (version <= 3)) {
               info.hardware_type = 1
@@ -181,7 +185,7 @@ exports.pigpio = function (pi) {
       }
       if (sock.name === 'notificationSocket') {
         sock.setTimeout(0)
-        sock.removeAllListeners('timeout')
+
       }
       log(`${sock.name} destroyed due to ${reason}`)
       info[sock.name] = false // mark socket disconnected
@@ -201,23 +205,42 @@ exports.pigpio = function (pi) {
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
-      if ( e.code === 'ECONNREFUSED' || e.code === 'EHOSTUNREACH'
-                || (e.code === 'ECONNRESET' ) && sock.connecting) {
+
+      if (sock.pending /*&& sock.connecting)*/)
+      {
         if (sock.retryTimer) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
+          sock.reconnectTimer.unref()
           log(`retry connection on ${sock.name} in 5 sec ...`)
+
+          // For each error code, inform user of retry timeout activity.
+          if ( !sock.retryEcode && sock.name === 'commandSocket') {
+            sock.retryEcode = e.code
+            console.log(`${e.code}, retrying ${info.host}:${info.port} ...`)
         }
       }
 
-      else if ( e.code === 'ECONNRESET' && !sock.connecting ) {
-        return sock.disconnectHandler(`${sock.name} ECONNRESET, disconnecting`)
+        // Inform user/app that connection could not be established.
+        else if (sock.name === 'commandSocket') {
+          console.log(`Unable to connect to pigpiod.  No retry timeout option `
+            + 'was specified.  Verify that daemon is running from '
+            + `${info.host}:${info.port}.`
+          )
+
+          that.emit('error', new MyError(e.message))
+        }
       }
 
-      // On any other error, throw
-      // socket.destroy(error) is caught here as well?
+      else if ( !sock.pending) {
+        return sock.disconnectHandler(`${sock.name}: ${e.code}, ${e.message}`)
+      }
+
+      else {
+        // On any other socket condition, throw
       that.emit('error', new MyError('Unhandled socket error, '+e.message))
+      }
     }
     return handler
   }
@@ -225,17 +248,11 @@ exports.pigpio = function (pi) {
   function returnCloseHandler(sock) {
     var handler = function (had_error) {
       if (had_error) {
+        // Error handler has already called disconnectHandler as needed.
         log(`${sock.name} closed on error`)
-        if (sock.name === 'commandSocket' && !sock.retryTimer)
-          console.log(
-            "Unable to connect to pigpiod and no retry timeout option specified."
-            + "  Process exiting.  Check the host address/port and if the daemon"
-            + " is running."
-          )
       }
 
-      // Close event without error indicates peer has closed connection.  We must
-      // disconnect in this case since the state of pigpiod may have changed.
+      // If closed without error, must call disconnectHandler from here.
       else {
         log(`${sock.name} closed`)
         if (info[sock.name]) sock.disconnectHandler('closed unexpectedly')
@@ -246,8 +263,14 @@ exports.pigpio = function (pi) {
 
   var resBuf = Buffer.allocUnsafe(0)  // see responseHandler()
 
-  commandSocket.on('data', (chunk) => {
-    var responseHandler = () => {
+  commandSocket.on('data', commandSocketDataHandler)
+
+  function commandSocketDataHandler (chunk) {
+    resBuf = Buffer.concat([resBuf, chunk])
+    if (resBuf.length >= 16) responseHandler()
+  }
+
+  function responseHandler () {
       /*  Extract response parameter (along with extended params) from response buffer
       (resBuf), return response as array argument to queued callback function in
       'callbackQueue.'  p3 contains either error code (if negative) OR response OR
@@ -337,13 +360,6 @@ exports.pigpio = function (pi) {
       }
     } // responseHandler
 
-    resBuf = Buffer.concat([resBuf, chunk])
-    // if (process.env.PIGPIO) {
-    //  let b = resBuf.toJSON().data;
-    //  console.log("response=\n",...b);
-    // }
-    if (resBuf.length >= 16) responseHandler()
-  })
 
   // helper functions
   var request = (cmd, p1, p2, p3, cb, extArrBuf) => {
@@ -389,27 +405,13 @@ exports.pigpio = function (pi) {
     return promise
   } // request()
 
-  var pigpv = (callback) => {
-    return request(PIGPV, 0, 0, 0, callback)
-  }
-
-  var hwver = (callback) => {
-    return request(HWVER, 0, 0, 0, callback)
-  }
 
 // Notifications socket = ToDo: check for notification errors response (res[3])
   var handle
   var chunklet = Buffer.allocUnsafe(0) // notify chunk fragments
   var oldLevels
 
-  var notificationSocket = new net.Socket()
-  notificationSocket.name = 'notificationSocket'
-  notificationSocket.on('connect', connectHandler(notificationSocket))
-  notificationSocket.reconnectHandler = returnErrorHandler(notificationSocket)
-  notificationSocket.disconnectHandler = disconnector(notificationSocket)
-  notificationSocket.addListener('error', notificationSocket.reconnectHandler)
-  notificationSocket.closeHandler = returnCloseHandler(notificationSocket)
-  notificationSocket.addListener('close', notificationSocket.closeHandler)
+  var notificationSocket = initSocket('notificationSocket')
   connect(notificationSocket)
 
   function notificationSocketConnectHandler(done) {
@@ -441,18 +443,33 @@ exports.pigpio = function (pi) {
         handle= res
         log('opened notification socket with handle= ' + handle)
 
-        // Detect dead connection.  Wait 'timeout' minutes before disconnecting.
+        // Enable BSC peripheral event monitoring (pigpio built-in event)
+        let arrayBuffer = new Uint8Array(4)
+        let bscEventBits = new Uint32Array(arrayBuffer, 0, 1)
+        bscEventBits[0] = 0x80000000
+        that.request(EVM, handle, bscEventBits[0], 0, (err) => {
+          if (err) {
+            log('bsc event monitoring FAILED: ' + err)
+          }
+          else log('bsc event monitoring active')
+        })
+
+        // Pigpio keep-alive:  Wait options.timeout minutes before disconnecting.
         notificationSocket.setTimeout(info.timeout * 60 * 1000, () => {
-          // generate an (custom) error exception on the socket(s)
           log('Pigpio keep-alive packet not received before timeout expired')
-          //notificationSocket.destroy(Error('timeout'))
-          //commandSocket.destroy() // don't need two errors generated
-          notificationSocket.disconnectHandler('timeout')
-          commandSocket.disconnectHandler('timeout')
+          // generate an (custom) error exception on the socket(s)
+          notificationSocket.disconnectHandler('pigpio keep-alive timeout')
+          commandSocket.disconnectHandler('pigpio keep-alive timeout')
         })
 
         // listener that monitors all gpio bits
-        notificationSocket.on('data', function (chunk) {
+        notificationSocket.on('data', notificationSocketDataHandler)
+        done() // connect handler completed callback
+      })
+    })
+  }
+
+  function notificationSocketDataHandler (chunk) {
           if (process.env.PIGPIO) {
             console.log(`notification received: chunk size = ${chunk.length}`)
           }
@@ -468,7 +485,11 @@ exports.pigpio = function (pi) {
                 flags = buf.readUInt16LE(i + 2),
                 tick = buf.readUInt32LE(i + 4),
                 levels = buf.readUInt32LE(i + 8)
-              //oldLevels = (typeof oldLevels === 'undefined') ? levels : oldLevels
+
+        if (flags & 0x80 && (flags & 0x1F) === 31) {
+          that.emit('EVENT_BSC')
+        }
+
               let changes = oldLevels ^ levels
               oldLevels = levels
               for (let nob of notifiers.keys()) {
@@ -478,33 +499,35 @@ exports.pigpio = function (pi) {
               }
             }
           }
-        })
-        done() // connect handler completed callback
-      })
-    })
   }
 
   notificationSocket.on('end', function () {
       log('pigpio notification socket end received')
   })
-/*
-  notificationSocket.on('close', function (had_error) {
-    if (had_error) {
-      log('pigpio notification socket closed with error: ', had_error)
-    }
-    else {
-      log('pigpio notification socket closed without error')
-      if (info.notificationSocket) notificationSocket.disconnectHandler('called from close')
-    }
-  })
-*/
+
   /** * Public Methods ***/
 
   that.request = request
 
   that.connect = function() {
+    if (commandSocket.destroy) {
+      log('Remove all listeners and destroy command socket.')
+      commandSocket.removeAllListeners()
+      commandSocket.destroy()
+    }
+    commandSocket = initSocket('commandSocket')
+    commandSocket.addListener('data', commandSocketDataHandler)
     connect(commandSocket)
+
+    if (notificationSocket.destroy) {
+      log('Remove all listeners and destroy notification socket.')
+      notificationSocket.removeAllListeners()
+      notificationSocket.destroy()
+    }
+    notificationSocket = initSocket('notificationSocket')
+    notificationSocket.addListener('data', notificationSocketDataHandler)
     connect(notificationSocket)
+
   }
 
 // Notifications

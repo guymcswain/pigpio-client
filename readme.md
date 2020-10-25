@@ -2,8 +2,8 @@
 Pigpio-client exposes the socket interface APIs of the pigpio library using nodejs.  This allows you to connect to a Raspberry Pi, running 
 remotely or local, and manipulate its GPIO pins with javascript.  The pigpio socket interface is described more fully [here:](http://abyz.me.uk/rpi/pigpio/sif.html)
 
-New in [**v1.4.0**](https://github.com/guymcswain/pigpio-client/wiki)  
-* Add hardware PWM API
+New in [**v1.5.0**](https://github.com/guymcswain/pigpio-client/wiki)  
+* Add I2C peripheral APIs
 
 #### Installing and Running pigpio daemon
 A guide for installing and running pigpiod along with other useful information can be found in the [wiki](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod)
@@ -63,17 +63,18 @@ Arguments to callback are: `(error, response)` unless otherwise noted.
 Construct a pigpio object and connect it to `options.host`.
   
 Options have the following properties:
-- host: <string> The remote IP address to host running pigpio daemon.  Defaults to 'localhost'.
+- host: <string> The remote IP address to host running pigpio daemon.  Defaults 
+to 'localhost'.
 - port: <number> The port used to configure pigpiod.  Default is 8888.
 - pipelining: <boolean> DEPRECATED. Configures internal socket communications.
 - timeout: <number> The network socket timeout in minutes. Default is 0. *Timeout* 
-enables automatic retries to connect to the server when recoverable errors -
-`ECONNREFUSED` and `EHOSTUNREACH` - are encountered. During the timeout period, 
-connection will be retried every 5 seconds.  After connection is established, if 
-keep-alive packets are not received from the server within *timeout* minutes, the 
-network sockets will be closed and a 'disconnected' event emitted.  If *timeout* 
-is used, it is recommended to set its value to > 1 minute.  Also recommended is to 
-use V68 of pigpio library.  
+enables automatic retries to connect to the server after any socket error is 
+encountered. During the timeout period, connection will be retried every 5 seconds. 
+An 'error' event will be emitted after the timeout period expires. After connection 
+is established, if keep-alive packets are not received from the server within 
+*timeout* minutes, the network sockets will be closed and a 'disconnected' event 
+emitted.  If *timeout* is used, it is recommended to set its value to > 1 minute. 
+Also recommended is to use V68 of pigpio library.  
 
 **`pigpio.gpio(gpio_pin)`** Return a gpio object set to the Broadcom GPIO number 
 specified by gpio_pin. An error will be thrown if gpio_pin is not a valid user GPIO.  
@@ -88,8 +89,8 @@ a serialport object will clear all waveforms.
 to pigpiod.  An 'info' object is passed to the handler.  You should wait for this 
 event before attempting to construct other objects - gpio, serialport.
 
-**`'disconnected'`**  Emitted when the socket connections are closed by pigpiod or 
-when no keep-alive packets were received within *timeout>0* minutes.  
+**`'disconnected'`**  Emitted when the socket connections are closed, for any reason, 
+or when no pigpio keep-alive packet is received within *timeout>0* minutes.  
 
 **`'error'`**  Error objects are passed to the 'error' event handler unless a callback 
 was provided when invoking an API.  Pigpio errors have the `name` property set to 
@@ -99,6 +100,7 @@ is set to `PigpioClientError`.
   
 
 ## Methods
+Note: Unless otherwise stated, all references to gpio pin numbers use **Broadcom numbering**.
 ### pigpio methods
 
 **`pigpio.getInfo(cb)`**  Returns useful information about rpi hardware and pigpiod.  
