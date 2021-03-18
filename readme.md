@@ -248,8 +248,8 @@ re-open it.
 
 **`serialport.read(size, cb)`**  *size* is an optional argument representing the 
 number of bytes to read. If not specified, all the data in pigpio's cyclic buffer 
-is returned (up to 8192 bytes).  Returns *cb(null, data)* where data is a utf8 
-string.  If the serialport is not open, returns *cb(null)*.  
+is returned (up to 8192 bytes).  Returns *cb(null, data)* where data is an array.  
+If the serialport is not open, returns *cb(null)*.  
 
 **`serialport.write(data)`**  *data* is a string or array of octets.  The *data* is
 buffered then sent out in chunk sizes that fit the available waveform resources.
