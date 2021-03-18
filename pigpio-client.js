@@ -41,7 +41,7 @@ var info = {
   hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.5.1',
+  version: '1.6.0alpha',
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
@@ -905,11 +905,9 @@ exports.pigpio = function (pi) {
         return request(SLRI, gpio, flag, 0, callback)
       }
       this.waveAddSerial = function (baud, bits, delay, data, callback) {
-        let dataBuf = Buffer.from(data)
+        let dataBuf = Buffer.from(data) // accepts utf8 string, array of octets or buffer
         let paramBuf = Buffer.from(Uint32Array.from([bits, 2, delay]).buffer)
         let buf = Buffer.concat([paramBuf, dataBuf])
-      // request take array buffer (this conversion from ZachB on SO)
-      // let arrBuf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
         return request(WVAS, gpio, baud, buf.length, callback, buf)
       }
     }// var gpio
@@ -935,7 +933,8 @@ exports.pigpio = function (pi) {
         assert(isUserGpio(rx) && isUserGpio(tx),
         "Arguments 'rx' and 'tx' must be valid user GPIO")
       
-      var baud, bits, isOpen=false, txBusy=false, maxChars, buffer=''
+      var baud, bits, isOpen=false, txBusy=false, maxChars,
+          buffer=Buffer.allocUnsafe(0); //holding buffer used by write()
       var _rx, _tx, _dtr
       _rx = new that.gpio(rx)
       if (tx === rx) { // loopback mode
@@ -1045,30 +1044,37 @@ exports.pigpio = function (pi) {
             } else if (len === 0) {
               callb(null, null)
             } else {
-              let buf = Buffer.from(bytes)
-              callb(null, ""+buf) // coerce to string
+              callb(null, bytes)
+              // NB: Now returns array of octets instead of string.  Required when
+              // reading binary data.  Serialport test must change as it currently
+              // expects a string return type.
+              // Returning data as UTF8 string fouls up data having values > 127.
             }
           })
         } else callb(null)
       }
-      
+
       this.write = function (data) {
-      /*  Saves data, coerced to utf8 string, to a buffer then sends chunks of
+      /*  Saves data to a buffer then sends chunks of
        *  of size 'maxChars' to waveAddSerial().  Returns the size (>=0) of buffer.
        *  If the serial port is not open, returns -1.  
        *  Pigpio errors will be thrown to limit possible data corruption.
       */
         if (isOpen === false)
           return -1
-        
-        buffer += data  // fast concatenation with coercion to string type
+
+        if (typeof data === 'string')
+          buffer = Buffer.concat([buffer, Buffer.from(data, 'binary')]);
+        else
+          buffer = Buffer.concat([buffer, Buffer.from(data)]); // assumes array type!
+
         if (txBusy)
           return buffer.length
         
         let chunk = buffer.slice(0, maxChars) // computed in serialport.open()
         buffer = buffer.slice(chunk.length)
         txBusy = true
-        if (chunk) send(chunk)
+        if (chunk.length) send(chunk)
         return buffer.length
         
         function send(data) {
@@ -1083,7 +1089,7 @@ exports.pigpio = function (pi) {
                   _tx.waveNotBusy(1, () => {
                     _tx.waveDelete(wid, (err) => {
                       if (err) throw(createSPError(err))
-                      if (buffer) {
+                      if (buffer.length) {
                         chunk = buffer.slice(0, maxChars)
                         buffer = buffer.slice(chunk.length)
                         send(chunk)

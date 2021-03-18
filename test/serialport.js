@@ -93,10 +93,11 @@ pi.on('connected', (info) => {
     function loopReadTest (data, cb) {
       // console.log("loopReadTest called, size= "+data.length)
       setTimeout(() => {
-        serial.read(data.length, (err, results) => {
+        serial.read(data.length, (err, res) => {
           if (err) {
             throw new Error(err)
           }
+          let results = Buffer.from(res);
           if (results === null) {
             return loopReadTest(data, cb)
           }

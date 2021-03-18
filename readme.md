@@ -240,8 +240,9 @@ of length *length*. [`gpioSerialRead`](http://abyz.me.uk/rpi/pigpio/cif.html#gpi
 
 ### serialport methods 
 ##### Experimental, these APIs may change in the future.  
+##### Serialport implements gpio bit_bang_serial methods - not the UART peripheral.  See `pigpio.serialport` constructor above.
 **`serialport.open(baudrate,databits,cb)`**  Argument *baudRate* must be a number
-from 50 to 250000.  Argument *dataBits* must be a number from 1 to 32. If the rx gpio 
+from 50 to 250000.  Argument *dataBits* must be a number from 1 to 32. No parity bit and only 1 stop bit are supported.  If the rx gpio 
 is already open for bit-bang serial read the method will close the gpio and then
 re-open it.  
 
@@ -250,11 +251,11 @@ number of bytes to read. If not specified, all the data in pigpio's cyclic buffe
 is returned (up to 8192 bytes).  Returns *cb(null, data)* where data is a utf8 
 string.  If the serialport is not open, returns *cb(null)*.  
 
-**`serialport.write(data)`**  *data* is utf8 string or Uint8Buffer.  The *data* is
+**`serialport.write(data)`**  *data* is a string or array of octets.  The *data* is
 buffered then sent out in chunk sizes that fit the available waveform resources.
 Returns the number of bytes remaining in the buffer.  If the serialport is not open,
 returns -1.  Any pigpio errors occurring during write will be thrown to limit the
-possibility of data corruption.
+possibility of data corruption.  NB: data of type string is encoded as `binary`, aka `latin1`.
 
 **`serialport.close(cb)`**  Close serialport.  
 
