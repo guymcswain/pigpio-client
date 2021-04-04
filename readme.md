@@ -153,7 +153,11 @@ device.
 **`gpio.modeSet(mode, cb)`**  Sets the gpio mode to be input or output.  The mode 
 argument must be `string` with a value of `'input'`, `'in'`, `'output'` or `'out'`.
 The optional callback is invoked with either `null` argument on success or `error` 
-on failure.  
+on failure.
+
+**`gpio.trigger(len, level, cb)`**  Send a trigger pulse to a GPIO. The GPIO is set 
+to `level` for `len` microseconds. The optional callback is invoked with either 
+`null` argument on success or `error` on failure.
 
 **`gpio.modeGet(cb)`**  Returns the mode of gpio as argument to callback. [`gpioGetMode`](http://abyz.me.uk/rpi/pigpio/cif.html#gpioGetMode)  
 
