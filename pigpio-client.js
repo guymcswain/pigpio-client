@@ -13,7 +13,7 @@ const ERR = SIF.PigpioErrors
 // These commands are currently supported by pigpio-client:
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
-WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW,
+WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, TRIG,
 I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
 } = SIF.Commands
 
@@ -705,6 +705,11 @@ exports.pigpio = function (pi) {
       }
       this.modeGet = function (callback) {
         return request(MODEG, gpio, 0, 0, callback)
+      }
+      this.trigger = function (len, level, callback) {
+        const buf = Buffer.allocUnsafe(4);
+        buf.writeUInt32LE(level);
+        return request(TRIG, gpio, len, 4, callback, buf);
       }
   // PWM
       this.analogWrite = function (dutyCycle, cb) {
