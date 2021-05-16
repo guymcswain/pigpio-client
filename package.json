@@ -3,6 +3,7 @@
   "version": "1.5.1",
   "description": "A nodejs client for pigpio socket interface.",
   "main": "pigpio-client.js",
+  "types": "pigpio-client.d.ts",
   "directories": {
     "test": "test"
   },
