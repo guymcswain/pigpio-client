@@ -148,6 +148,29 @@ status bytes followed by the data bytes read from the RX FIFO.
 The `EVENT_BSC` event is emitted when data is available to read from the BSC I2C 
 device.
 
+### Scripts run within pigpiod
+
+**`storeScript(text, cb)`**  Store a script in pigpiod.  cb calls with scriptId
+
+**`deleteScript(scriptID, cb)`**  Delete a script from pigpiod.
+
+**`statusScript(scriptID, cb)`**  Get status of a script from pigpiod.
+
+**`runScript(sid, params, cb)`**  Run a script in pigpiod. params is an array.
+
+**`stopScript(sid, cb)`**  Run a script in pigpiod. params is an array.
+
+**`updateScript(sid, params, cb)`**  Update params for a script in pigpiod. params is an array.
+
+Script example:
+```
+let scriptID = await pigpio.storeScript('w p2 0 w p4 0 pwm p0 p1 w p2 p3 w p4 p5');
+await pigpio.runScript(scriptID, [17, 128, 18, 0, 27, 1]);
+setTimeout(async ()=>{
+  await pigpio.runScript(scriptID, [17, 0, 18, 0, 27, 0]);
+}, 1000);
+```
+
 
 ### gpio basic methods
 **`gpio.modeSet(mode, cb)`**  Sets the gpio mode to be input or output.  The mode 
