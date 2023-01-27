@@ -643,13 +643,11 @@ exports.pigpio = function (pi) {
   // if using await fn(), you will get an array back [count, d0, d1, d2 ...]
   // if using fn(callback), you will get (err, count, d0, d1, d2 ...) 
   
-  that.i2cOpen = function (bus, device, callback) {
-    let flags = new Uint8Array(4);  // inits to zero
-    return request(I2CO, bus, device, 4, callback, flags)
-  }
-
-  // open with specified flags
-  that.i2cOpenF = function (bus, device, flags, callback) {
+  that.i2cOpen = function (bus, device, flags, callback) {
+    if (typeof flags === 'function'){
+      callback = flags;
+      flags = 0;  // inits to zero
+    }
     flags = flags || 0;
     let flagsarr = [flags & 0xff, (flags >> 8)&0xff, (flags >> 16)&0xff, (flags >> 24)&0xff ];
     let buffer = Buffer.from(flagsarr);
