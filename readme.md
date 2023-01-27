@@ -115,11 +115,16 @@ Note: Unless otherwise stated, all references to gpio pin numbers use **Broadcom
 
 **`pigpio.connect()`**  Re-establishes communication with server after being disconnected.  
 
-**`pigpio.i2cOpen(bus, address, callback)`**  Return a handle for communication 
+**`pigpio.i2cOpen(bus, address, flags?, callback)`**  Return a handle for communication 
 with a device attached to a bus on the I2C peripheral.  `bus==0` uses (Broadcom) 
 gpio 0 and 1, while `bus==1` use gpio 2 and 3 for SDA and SCL respectively.  `address` takes values 1-127.
+May be called as `pigpio.i2cOpen(bus, address, callback)` - flags will default to zero
 
 **`pigpio.i2cClose(handle, callback)`**  Close the I2C device associated with handle.
+
+general note about returns with data.
+if using await fn(), you will get an array back [count, d0, d1, d2 ...]
+if using fn(callback), you will get (err, count, d0, d1, d2 ...) 
 
 **`pigpio.i2cReadDevice(handle, count, callback)`**  Read count bytes from the i2c 
 device referred by handle.  Returns tuple (error, count, data).  `error` is 0 on 
@@ -128,6 +133,40 @@ success or an error code.  `count` is the number of bytes read.  `data` is a buf
 **`pigpio.i2cWriteDevice(handle, data, callback)`**  Write data to the i2c device 
 referred by handle.  `data` is a byte array or utf8 string.  Returns 0 if 
 OK, otherwise an error code.  
+
+**`pigpio.i2cReadByteData(handle, reg, callback)`** Read a byte from a reg
+
+**`pigpio.i2cWriteByteData(handle, reg, byte, callback)`** Write a byte to a reg
+
+**`pigpio.i2cReadByte = function (handle, callback)`** Read a byte from a device
+
+**`pigpio.i2cWriteByte(handle, byte, callback)`** Write a byte from a device
+
+**`pigpio.i2cWriteQuick(handle, bit, callback)`** Write a bit to a device
+
+**`pigpio.i2cReadWordData(handle, reg, callback)`** Read a 16 bit word from a reg
+
+**`pigpio.i2cWriteWordData(handle, reg, word, callback)`** Write a 16 bit word from a reg
+
+**`pigpio.i2cReadBlockData(handle, reg, callback)`** Read a block from a reg
+await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+  
+**`pigpio.i2cWriteBlockData(handle, reg, data, callback)`**  Read a block to a reg
+1-32 bytes as array, or anything which can be used by Buffer.from(var)
+
+**`pigpio.i2cReadI2cBlockData(handle, reg, len, callback)`** Read a block from reg with increment
+1-32 bytes
+await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+
+**`pigpio.i2cWriteI2cBlockData(handle, reg, data, callback)`** Write a block from reg with increment
+1-32 bytes as array, or anything which can be used by Buffer.from(var)
+
+**`pigpio.i2cProcessCall = function (handle, reg, word, callback)`** Write a word (16 bit)
+returns a word (16 bit) response.
+  
+**`pigpio.i2cBlockProcessCall(handle, reg, data, callback)`** Write a block to a reg, 
+writes 1-32 bytes of data, returns data.
+await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
 
 **`pigpio.bscI2C(address, data, callback)`**  Transfer data to/from the BSC I2C 
 slave peripheral using gpio 18 (SDA) and 19 (SCL).  The data bytes (if any) are 
