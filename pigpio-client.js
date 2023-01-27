@@ -14,7 +14,11 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, TRIG,
-I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
+I2CO, I2CC, I2CRD, I2CWD, 
+I2CWQ, I2CRS, I2CWS, I2CRB, I2CWB, I2CRW, I2CWW, I2CRK, I2CWK, I2CRI, I2CWI, I2CPC, I2CPK,
+  
+BSCX, EVM, 
+PROC, PROCD, PROCR, PROCS, PROCP, PROCU
 } = SIF.Commands
 
 // These command types can not fail, ie, always return p3/res as positive integer
@@ -506,6 +510,9 @@ exports.pigpio = function (pi) {
 
   that.request = request
 
+  // export his so that we can extend externally more easily.
+  that.Commands = SIF.Commands;
+
   that.connect = function() {
     if (commandSocket.destroy) {
       log('Remove all listeners and destroy command socket.')
@@ -631,24 +638,107 @@ exports.pigpio = function (pi) {
     })
   }
   
+
+  // general note about returns with data.
+  // if using await fn(), you will get an array back [count, d0, d1, d2 ...]
+  // if using fn(callback), you will get (err, count, d0, d1, d2 ...) 
+  
   that.i2cOpen = function (bus, device, callback) {
     let flags = new Uint8Array(4);  // inits to zero
     return request(I2CO, bus, device, 4, callback, flags)
+  }
+
+  // open with specified flags
+  that.i2cOpenF = function (bus, device, flags, callback) {
+    flags = flags || 0;
+    let flagsarr = [flags & 0xff, (flags >> 8)&0xff, (flags >> 16)&0xff, (flags >> 24)&0xff ];
+    let buffer = Buffer.from(flagsarr);
+    return request(I2CO, bus, device, buffer.length, callback, buffer)
   }
 
   that.i2cClose = function (handle, callback) {
     return request(I2CC, handle, 0, 0, callback)
   }
 
+  // await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
   that.i2cReadDevice = function (handle, count, callback) {
     return request(I2CRD, handle, count, 0, callback)
   }
 
   that.i2cWriteDevice = function (handle, data, callback) {
     let buffer = Buffer.from(data);
-    return request(I2CWD, handle, 0, data.length, callback, buffer)
+    return request(I2CWD, handle, 0, buffer.length, callback, buffer)
+  }
+
+  that.i2cReadByteData = function (handle, reg, callback) {
+    return request(I2CRB, handle, reg, 0, callback)
+  }
+
+  that.i2cWriteByteData = function (handle, reg, byte, callback) {
+    let buffer = Buffer.from([byte, 0, 0, 0]);
+    return request(I2CWB, handle, reg, buffer.length, callback, buffer)
+  }
+
+  that.i2cReadByte = function (handle, callback) {
+    return request(I2CRS, handle, 0, 0, callback)
+  }
+
+  that.i2cWriteByte = function (handle, byte, callback) {
+    return request(I2CWS, handle, byte, 0, callback)
+  }
+
+  that.i2cWriteQuick = function (handle, bit, callback) {
+    return request(I2CWQ, handle, bit, 0, callback)
+  }
+
+  that.i2cReadWordData = function (handle, reg, callback) {
+    return request(I2CRW, handle, reg, 0, callback)
+  }
+
+  that.i2cWriteWordData = function (handle, reg, word, callback) {
+    let wordarr = [word & 0xff, (word >> 8)&0xff, 0,0 ];
+    let buffer = Buffer.from(wordarr);
+    return request(I2CWW, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+  that.i2cReadBlockData = function (handle, reg, callback) {
+    return request(I2CRK, handle, reg, 0, callback);
   }
   
+  // 1-32 bytes
+  that.i2cWriteBlockData = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CWK, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // read a block from reg with increment
+  // await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+  that.i2cReadI2cBlockData = function (handle, reg, len, callback) {
+    let lenarr = [len & 0xff, 0,0,0 ];
+    let buffer = Buffer.from(lenarr);
+    return request(I2CRI, handle, reg, buffer.length, callback, buffer);
+  }
+
+  that.i2cWriteI2cBlockData = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CWI, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // returns a word response.
+  that.i2cProcessCall = function (handle, reg, word, callback) {
+    let wordarr = [word & 0xff, (word >> 8)&0xff, 0, 0];
+    let buffer = Buffer.from(wordarr);
+    return request(I2CPC, handle, reg, buffer.length, callback, buffer);
+  }
+  
+  // writes 1-32 bytes of data, returns count, and buffer with data.
+  // await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+  that.i2cBlockProcessCall = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CPK, handle, reg, buffer.length, callback, buffer);
+  }
+
   that.bscI2C = function (address, data, callback) {
     let control
     if (address > 0 && address < 128) {
