@@ -183,8 +183,7 @@ function addPCA9685Servos(pigpio_instance){
                     let l = (start+len) - i;
                     if (l > 32) l = 32;
                     let res = await pigpio.i2cReadI2cBlockData(this.pca, i, l);
-                    console.log('bytes read: '+res[0]+' bytes:'+ res.toString());
-                    res.shift();
+                    console.log('bytes read: '+res.length+' bytes:'+ res.toString());
                     deviceData.push(...res);
                 }
                 for (let i = 0; i < deviceData.length; i+= 16){
@@ -274,9 +273,8 @@ function addPCA9685Servos(pigpio_instance){
                 // illustrate use of i2cReadI2cBlockData
                 // note because await, we get an array back which starts with length
                 let b = await pigpio.i2cReadI2cBlockData(this.pca, LED0_ON_L + LED_MULTIPLYER * servo, 4);
-                let len = b[0];
-                let on = b[1] | (b[2]<<8);
-                let off = b[3] | (b[4] << 8);
+                let on = b[0] | (b[1]<<8);
+                let off = b[2] | (b[3] << 8);
                 console.log({ on, off });
 
                 return {on, off};
