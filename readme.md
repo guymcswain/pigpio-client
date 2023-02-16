@@ -115,6 +115,10 @@ Note: Unless otherwise stated, all references to gpio pin numbers use **Broadcom
 
 **`pigpio.connect()`**  Re-establishes communication with server after being disconnected.  
 
+
+#### i2c Raw functions
+These take a handle as the first parameter.
+
 **`pigpio.i2cOpen(bus, address, flags?, callback)`**  Return a handle for communication 
 with a device attached to a bus on the I2C peripheral.  `bus==0` uses (Broadcom) 
 gpio 0 and 1, while `bus==1` use gpio 2 and 3 for SDA and SCL respectively.  `address` takes values 1-127.
@@ -122,13 +126,11 @@ May be called as `pigpio.i2cOpen(bus, address, callback)` - flags will default t
 
 **`pigpio.i2cClose(handle, callback)`**  Close the I2C device associated with handle.
 
-general note about returns with data.
-if using await fn(), you will get an array back [count, d0, d1, d2 ...]
-if using fn(callback), you will get (err, count, d0, d1, d2 ...) 
+general note about returns with data.  For both callback and await, block functions will return an array.
 
 **`pigpio.i2cReadDevice(handle, count, callback)`**  Read count bytes from the i2c 
-device referred by handle.  Returns tuple (error, count, data).  `error` is 0 on 
-success or an error code.  `count` is the number of bytes read.  `data` is a buffer.
+device referred by handle.  Returns tuple (error, data).  `error` is 0 on 
+success or an error code.  `data` is an array of size `count`.
 
 **`pigpio.i2cWriteDevice(handle, data, callback)`**  Write data to the i2c device 
 referred by handle.  `data` is a byte array or utf8 string.  Returns 0 if 
@@ -144,29 +146,55 @@ OK, otherwise an error code.
 
 **`pigpio.i2cWriteQuick(handle, bit, callback)`** Write a bit to a device
 
-**`pigpio.i2cReadWordData(handle, reg, callback)`** Read a 16 bit word from a reg
+**`pigpio.i2cReadWordData(handle, reg, callback)`** Read a 16 bit word from a reg (alias i2cReadWordDataLE)
 
-**`pigpio.i2cWriteWordData(handle, reg, word, callback)`** Write a 16 bit word from a reg
+**`pigpio.i2cReadWordDataBE(handle, reg, callback)`** Read a 16 bit Big Endian word from a reg
+
+**`pigpio.i2cWriteWordData(handle, reg, word, callback)`** Write a 16 bit word from a reg (alias i2cWriteWordDataLE)
+
+**`pigpio.i2cWriteWordDataBE(handle, reg, word, callback)`** Write a 16 bit Big Endian word from a reg
 
 **`pigpio.i2cReadBlockData(handle, reg, callback)`** Read a block from a reg
-await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
   
-**`pigpio.i2cWriteBlockData(handle, reg, data, callback)`**  Read a block to a reg
+**`pigpio.i2cWriteBlockData(handle, reg, data, callback)`**  Write a block to a reg
 1-32 bytes as array, or anything which can be used by Buffer.from(var)
 
 **`pigpio.i2cReadI2cBlockData(handle, reg, len, callback)`** Read a block from reg with increment
 1-32 bytes
-await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
 
-**`pigpio.i2cWriteI2cBlockData(handle, reg, data, callback)`** Write a block from reg with increment
+**`pigpio.i2cWriteI2cBlockData(handle, reg, data, callback)`** Write a block to reg with increment
 1-32 bytes as array, or anything which can be used by Buffer.from(var)
 
 **`pigpio.i2cProcessCall = function (handle, reg, word, callback)`** Write a word (16 bit)
 returns a word (16 bit) response.
   
+**`pigpio.i2cProcessCallBE = function (handle, reg, word, callback)`** Write a Big Endian word (16 bit)
+returns a Big Endian word (16 bit) response.
+  
 **`pigpio.i2cBlockProcessCall(handle, reg, data, callback)`** Write a block to a reg, 
 writes 1-32 bytes of data, returns data.
-await: [count, d0, d1, d2 ...] callback:(err, count, d0, d1, d2 ...) 
+await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
+
+**`pigpio.i2cReadBigI2cBlockData(handle, reg, len, increment?, callback, chunkSize?)`** Read a block from reg with or without increment, and at certain chunk sizes.
+This is a convenience funciton which calls i2cReadI2cBlockData multiple times to read more than 32 bytes.  Set increment to true if you want the reg to be incremented between calls.  Set chunkSize if individual calls should be smaller than the default 32 bytes.
+await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
+
+**`pigpio.i2cWriteBigI2cBlockData(handle, reg, data, increment, callback, chunkSize)`** Write a block to reg with or without increment, and at certain chunk sizes.
+This is a convenience funciton which calls i2cWriteI2cBlockData multiple times to write more than 32 bytes.  Set increment to true if you want the reg to be incremented between calls.  Set chunkSize if individual calls should be smaller than the default 32 bytes.
+1-n bytes as array, or anything which can be used by Buffer.from(var)
+
+#### i2c Helper
+**`pigpio.i2c(bus, address, flags?, callback)`** Create an i2c instance.
+All the i2c functions can be called on the i2c instance, it just stored the handle for you. e.g. 
+```
+let i2c = await pigpio.i2c(bus, address);
+let val = await i2c.readByteData(reg); // equivalent to pigpio.i2cReadByteData(handle, reg);
+await i2c.close();
+```
+
+#### i2c Slave
 
 **`pigpio.bscI2C(address, data, callback)`**  Transfer data to/from the BSC I2C 
 slave peripheral using gpio 18 (SDA) and 19 (SCL).  The data bytes (if any) are 
