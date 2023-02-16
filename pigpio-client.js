@@ -633,9 +633,22 @@ exports.pigpio = function (pi) {
   that.end = function (cb) {
     commandSocket.end()       // calls disconnectHandler, destroys connection.
     notificationSocket.end()  // calls disconnectHandler, destroys connection.
+    let promise;
+    if (!cb){
+      promise = new Promise((resolve, reject) => {
+        cb = (error, ...args) => {
+            if (error) {
+                reject(error)
+            } else {
+                resolve(args);
+            }
+        }
+      });
+    }
     that.once('disconnected', () => {
-      if (typeof cb === 'function') cb()
+      if (typeof cb === 'function') cb(null, 0);
     })
+    return promise;
   }
   
 
