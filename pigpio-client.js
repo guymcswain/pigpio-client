@@ -14,7 +14,11 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, TRIG,
-I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
+I2CO, I2CC, I2CRD, I2CWD, 
+I2CWQ, I2CRS, I2CWS, I2CRB, I2CWB, I2CRW, I2CWW, I2CRK, I2CWK, I2CRI, I2CWI, I2CPC, I2CPK,
+  
+BSCX, EVM, 
+PROC, PROCD, PROCR, PROCS, PROCP, PROCU
 } = SIF.Commands
 
 // These command types can not fail, ie, always return p3/res as positive integer
@@ -506,6 +510,9 @@ exports.pigpio = function (pi) {
 
   that.request = request
 
+  // export his so that we can extend externally more easily.
+  that.Commands = SIF.Commands;
+
   that.connect = function() {
     if (commandSocket.destroy) {
       log('Remove all listeners and destroy command socket.')
@@ -626,29 +633,364 @@ exports.pigpio = function (pi) {
   that.end = function (cb) {
     commandSocket.end()       // calls disconnectHandler, destroys connection.
     notificationSocket.end()  // calls disconnectHandler, destroys connection.
+    let promise;
+    if (!cb){
+      promise = new Promise((resolve, reject) => {
+        cb = (error, ...args) => {
+            if (error) {
+                reject(error)
+            } else {
+                resolve(args);
+            }
+        }
+      });
+    }
     that.once('disconnected', () => {
-      if (typeof cb === 'function') cb()
+      if (typeof cb === 'function') cb(null, 0);
     })
+    return promise;
   }
   
-  that.i2cOpen = function (bus, device, callback) {
-    let flags = new Uint8Array(4);  // inits to zero
-    return request(I2CO, bus, device, 4, callback, flags)
+
+  //////////////////////////////////////////////////////////////////////////////////////
+  // i2c master functions
+  // general note about returns with buffer data.
+  // if using await fn(), you will get an array back [d0, d1, d2 ...]
+  // if using fn(callback), you will get (err, [d0, d1, d2 ...]) 
+ 
+  that.i2cOpen = function (bus, device, flags, callback) {
+    if (typeof flags === 'function'){
+      callback = flags;
+      flags = 0;  // inits to zero
+    }
+    flags = flags || 0;
+    let flagsarr = [flags & 0xff, (flags >> 8)&0xff, (flags >> 16)&0xff, (flags >> 24)&0xff ];
+    let buffer = Buffer.from(flagsarr);
+    return request(I2CO, bus, device, buffer.length, callback, buffer)
   }
 
   that.i2cClose = function (handle, callback) {
     return request(I2CC, handle, 0, 0, callback)
   }
 
+  // await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
   that.i2cReadDevice = function (handle, count, callback) {
-    return request(I2CRD, handle, count, 0, callback)
+    return this._i2cRequestProcessBlock(I2CRD, handle, count, 0, callback)
   }
 
   that.i2cWriteDevice = function (handle, data, callback) {
     let buffer = Buffer.from(data);
-    return request(I2CWD, handle, 0, data.length, callback, buffer)
+    return request(I2CWD, handle, 0, buffer.length, callback, buffer)
+  }
+
+  that.i2cReadByteData = function (handle, reg, callback) {
+    return request(I2CRB, handle, reg, 0, callback)
+  }
+
+  that.i2cWriteByteData = function (handle, reg, byte, callback) {
+    // pigpio expects 4 byte 'extra data' for byte and word.
+    let buffer = Buffer.from([byte, 0, 0, 0]);
+    return request(I2CWB, handle, reg, buffer.length, callback, buffer)
+  }
+
+  that.i2cReadByte = function (handle, callback) {
+    return request(I2CRS, handle, 0, 0, callback)
+  }
+
+  that.i2cWriteByte = function (handle, byte, callback) {
+    return request(I2CWS, handle, byte, 0, callback)
+  }
+
+  that.i2cWriteQuick = function (handle, bit, callback) {
+    return request(I2CWQ, handle, bit, 0, callback);
+  }
+
+  // read a word from a little-endian device.
+  that.i2cReadWordData = function (handle, reg, callback) {
+    return request(I2CRW, handle, reg, 0, callback);
+  }
+  that.i2cReadWordDataLE = that.i2cReadWordData; 
+
+  // make a request, but byte-swap the word response before returning.
+  // note that for readWordBE, len is zero and buffer undefined.
+  that._i2cRequestSwapWordResponse = function(funct, handle, reg, len, callback, buffer){
+    let cb;
+    let promise;
+    if (callback){
+      cb = (err, word)=>{
+          word = word || 0;
+          word = ((word >> 8) & 0xff) | ((word & 0xff)<<8);
+          callback(err, word);
+      };    
+    } else {
+      promise = new Promise((resolve, reject) => {
+          cb = (error, ...args) => {
+              if (error) {
+                  reject(error)
+              } else {
+                  let word = args[0];
+                  word = word || 0;
+                  word = ((word >> 8) & 0xff) | ((word & 0xff) << 8);
+                  resolve(word);
+              }
+          }
+      });
+    }
+    request(funct, handle, reg, len, cb, buffer);
+    return promise;
+  }
+
+  // read a word from a big-endian device.
+  that.i2cReadWordDataBE = function (handle, reg, callback) {
+    return this._i2cRequestSwapWordResponse(I2CRW, handle, reg, 0, callback);
+  }
+
+  // write a word to a little-endian device.
+  that.i2cWriteWordData = function (handle, reg, word, callback) {
+    let wordarr = [word & 0xff, (word >> 8)&0xff, 0,0 ]; // 4 bytes needed for pigpio.
+    let buffer = Buffer.from(wordarr);
+    return request(I2CWW, handle, reg, buffer.length, callback, buffer);
+  }
+  that.i2cWriteWordDataLE = that.i2cWriteWordData; 
+
+  // write a word to a big-endian device.
+  that.i2cWriteWordDataBE = function (handle, reg, word, callback) {
+    let wordarr = [(word >> 8)&0xff, word & 0xff, 0,0 ]; // 4 bytes needed for pigpio.
+    let buffer = Buffer.from(wordarr);
+    return request(I2CWW, handle, reg, buffer.length, callback, buffer);
+  }
+
+
+  // this function receives an array back from pigpio, and removes the first byte (len)
+  // and then returns or resolves an array.
+  // the native request callback response returns a number of arguments, not an array...
+  // so this is more convenient.
+  // The response becomes: await: [d0, d1, d2 ...] or callback:(err, [d0, d1, d2 ...]) 
+  that._i2cRequestProcessBlock = function(funct, handle, reg, len, callback, buffer){
+    let cb;
+    let promise;
+    if (callback) {
+      cb = (err, ...args) => {
+        // discard count, as the count of args is the size of args...
+        if (args && args.length >= 1)
+          args.shift();
+        callback(err, args);
+      }
+    } else {
+      promise = new Promise((resolve, reject) => {
+          cb = (error, ...args) => {
+              if (error) {
+                  reject(error)
+              } else {
+                  // discard count, as the count of args is the size of args...
+                  args.shift();
+                  resolve(args);
+              }
+          }
+      });
+    }
+    request(funct, handle, reg, len, cb, buffer);
+    return promise;
+  }
+
+  // await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
+  // smb read block data.  no length specified.
+  that.i2cReadBlockData = function (handle, reg, callback) {
+    return this._i2cRequestProcessBlock(I2CRK, handle, reg, 0, callback);
   }
   
+  // 1-32 bytes
+  that.i2cWriteBlockData = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CWK, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // read a block from reg with increment
+  // await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
+  that.i2cReadI2cBlockData = function (handle, reg, len, callback) {
+    let lenarr = [len & 0xff, 0,0,0 ]; // 4 bytes needed for pigpio.
+    let buffer = Buffer.from(lenarr);
+    return this._i2cRequestProcessBlock(I2CRI, handle, reg, buffer.length, callback, buffer);
+  }
+
+  that.i2cWriteI2cBlockData = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return request(I2CWI, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // helpers to read/write blocks greater than 32 bytes....
+  // pigpio protocol has a max of 32.
+  // set increment to true to increment reg read/written for each block.
+  // set to false if reading a single (non auto incrementing) reg (e.g. a fifo).
+  // let arr = await pigpio.i2cReadBigI2cBlock(handle, reg, len, true); or pigpio.i2cReadBigI2cBlock(handle, reg, len, true, (err, arr)=>{}, 16);
+  // let res = await pigpio.i2cWriteBigI2cBlock(handle, reg, true, arr|buf); or pigpio.i2cWriteBigI2cBlock(handle, reg, arr|buf, true, (err, res)=>{}, 16);
+  that.i2cReadBigI2cBlockData = function(handle, reg, len, increment, callback, chunksize){
+      return this._i2cBigBlockFns('_i2cReadBigI2cBlockData', handle, reg, len, increment, callback, chunksize);
+  }
+  that.i2cWriteBigI2cBlockData = function(handle, reg, buffer, increment, callback, chunksize){
+      return this._i2cBigBlockFns('_i2cWriteBigI2cBlockData', handle, reg, buffer, increment, callback, chunksize);
+  }
+
+  that._i2cReadBigI2cBlockData = async function(handle, reg, len, increment, callback, chunksize){
+      try{
+          chunksize = chunksize || 32;
+          let buf = [];
+          let lenleft = len;
+          while (lenleft > 0) {           
+              let thisread = lenleft;
+              if (thisread > chunksize) thisread = chunksize;                                                                  /* set the output length */
+              let partbuf = await this.i2cReadI2cBlockData(handle, reg, thisread);
+              if (increment) reg += thisread;
+              buf.push(...partbuf);
+              lenleft -= thisread;
+          }
+          callback(null, buf);
+      } catch (e){
+          callback(e);
+      }
+  };
+  that._i2cWriteBigI2cBlockData = async function(handle, reg, buffer, increment, callback, chunksize){
+      try{
+          chunksize = chunksize || 32;
+          let lenleft = buffer.length;
+          let index = 0;
+          while (lenleft > 0) {           
+              let thiswrite = lenleft;
+              if (thiswrite > chunksize) thiswrite = chunksize;                                                                  /* set the output length */
+              await this.i2cWriteI2cBlockData(handle, reg, buffer.slice(index, index + thiswrite));
+              if (increment) reg += thiswrite;
+              lenleft -= thiswrite;
+              index += thiswrite;
+          }
+          callback(null, index);
+      } catch (e){
+          callback(e);
+      }
+  };
+  // deal with callback or providing promise, whilst calling an async function.
+  that._i2cBigBlockFns = function(fn, handle, reg, a, b, callback, c, d){
+      let cb = callback;
+      let promise;
+      if (!cb){
+          promise = new Promise((resolve, reject) => {
+              cb = (error, ...args) => {
+                  if (error) {
+                      reject(error)
+                  } else {
+                      // discard count, as the count of args is the size of args...
+                      resolve(args[0]);
+                  }
+              }
+          });
+      }
+      this[fn](handle, reg, a, b, cb, c, d);
+      return promise;
+  }
+
+
+  // returns a word response.
+  // write/read a word from a little-endian device.
+  that.i2cProcessCall = function (handle, reg, word, callback) {
+    let wordarr = [word & 0xff, (word >> 8)&0xff, 0, 0]; // 4 bytes needed for pigpio.
+    let buffer = Buffer.from(wordarr);
+    return request(I2CPC, handle, reg, buffer.length, callback, buffer);
+  }
+
+  // write/read a word from a big-endian device.
+  that.i2cProcessCallBE = function (handle, reg, word, callback) {
+    let wordarr = [(word >> 8)&0xff, word & 0xff, 0, 0]; // 4 bytes needed for pigpio.
+    let buffer = Buffer.from(wordarr);
+    return that._i2cRequestSwapWordResponse(I2CPC, handle, reg, buffer.length, callback, buffer);
+  }
+
+  
+  // writes 1-32 bytes of data, returns or resolves an array
+  // await: [d0, d1, d2 ...] callback:(err, [d0, d1, d2 ...]) 
+  that.i2cBlockProcessCall = function (handle, reg, data, callback) {
+    let buffer = Buffer.from(data);
+    return this._i2cRequestProcessBlock(I2CPK, handle, reg, buffer.length, callback, buffer);
+  }
+
+  /////////////////////////////////////////////////////////////////////
+  // adds a function .i2c to pigpio.
+  // install with addI2cHelper(pigpio_instance);
+  // create an i2c instance like:
+  // let inst = await pigpio.i2c(bus, addr);
+  // or 
+  // pigpio.i2c(bus, addr, (err, inst)=>{});
+  // then 
+  // let b = await inst.readByteData(reg); or inst.readByteData(reg, (err, byte)=>{});
+  // implements all functions starting i2c in pigpio.
+  /////////////////////////////////////////////////////////////////////
+  let addI2cHelper = function(pigpio_instance){
+    let i2c = function(bus, addr, flags, callback){
+      if (typeof flags === 'function'){
+        callback = flags;
+        flags = 0;  // inits to zero
+      }
+      flags = flags || 0;
+  
+      let addfns = (instance)=>{
+          let keys = Object.keys(instance.pigpio);
+          for (i = 0; i < keys.length; i++){
+              let fnname = keys[i]; 
+              if (fnname.startsWith('i2c')){
+                  if ((fnname !== 'i2cOpen') && (fnname !== 'i2cClose')){
+                      // convert i2cMyFn to i2c.myFn
+                      instance[fnname.slice(3,4).toLowerCase() + fnname.slice(4)] = function(a,b,c,d,e,f){
+                          return this.pigpio[fnname](this.i2c, a,b,c,d,e,f);
+                      }
+                  }
+              }
+          }
+      };
+
+      let i2cinstance = {
+          bus:1,
+          i2c_address:0,        
+          pigpio: pigpio_instance,
+          flags: flags,
+          init: async function(bus, addr){
+            this.bus = bus;
+            this.i2c_address = addr;
+            this.i2c = await this.pigpio.i2cOpen(this.bus, this.i2c_address, this.flags);
+            addfns(this);
+            // keep open handles, maybe in the future we can cleanup?
+            this.pigpio._i2cs = this.pigpio._i2cs || {};
+            this.pigpio._i2cs[this.i2c] = true;
+            return this;
+          },
+          close: async function(){
+            await this.pigpio.i2cClose(this.i2c);
+            delete this.pigpio._i2cs[this.i2c]; // forget this handle.
+            this.i2c = undefined;
+          }
+      };
+
+      let promise;
+      if (!callback){        
+          promise = new Promise((resolve, reject) => {
+              callback = (error, instance) => {
+                  if (error) reject(error)
+                  else resolve(instance);
+              }
+          });
+      }
+      i2cinstance.init(bus, addr).then((instance)=>{
+          callback(null, instance);
+      }).catch((e)=>{
+          callback(e, null);
+      });
+      return promise;
+    };
+    pigpio_instance.i2c = i2c;
+  }
+  addI2cHelper(that);
+  // end of i2c master functions
+  //////////////////////////////////////////////////////////////////////////////////////
+
+
+  // pi as i2c slave?
   that.bscI2C = function (address, data, callback) {
     let control
     if (address > 0 && address < 128) {
