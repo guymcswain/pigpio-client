@@ -923,62 +923,66 @@ exports.pigpio = function (pi) {
   // implements all functions starting i2c in pigpio.
   /////////////////////////////////////////////////////////////////////
   let addI2cHelper = function(pigpio_instance){
-    let i2c = function(bus, addr, callback){
-        let addfns = (instance)=>{
-            let keys = Object.keys(instance.pigpio);
-            for (i = 0; i < keys.length; i++){
-                let fnname = keys[i]; 
-                if (fnname.startsWith('i2c')){
-                    if ((fnname !== 'i2cOpen') && (fnname !== 'i2cClose')){
-                        // convert i2cMyFn to i2c.myFn
-                        instance[fnname.slice(3,4).toLowerCase() + fnname.slice(4)] = function(a,b,c,d,e,f){
-                            return this.pigpio[fnname](this.i2c, a,b,c,d,e,f);
-                        }
-                    }
-                }
-            }
-        };
+    let i2c = function(bus, addr, flags, callback){
+      if (typeof flags === 'function'){
+        callback = flags;
+        flags = 0;  // inits to zero
+      }
+      flags = flags || 0;
+  
+      let addfns = (instance)=>{
+          let keys = Object.keys(instance.pigpio);
+          for (i = 0; i < keys.length; i++){
+              let fnname = keys[i]; 
+              if (fnname.startsWith('i2c')){
+                  if ((fnname !== 'i2cOpen') && (fnname !== 'i2cClose')){
+                      // convert i2cMyFn to i2c.myFn
+                      instance[fnname.slice(3,4).toLowerCase() + fnname.slice(4)] = function(a,b,c,d,e,f){
+                          return this.pigpio[fnname](this.i2c, a,b,c,d,e,f);
+                      }
+                  }
+              }
+          }
+      };
 
-        let i2cinstance = {
-            bus:1,
-            i2c_address:0,        
-            pigpio: pigpio_instance,
-            init: async function(bus, addr){
-              this.bus = bus;
-              this.i2c_address = addr;
-              this.i2c = await this.pigpio.i2cOpen(this.bus, this.i2c_address);
-              addfns(this);
-              // keep open handles, maybe in the future we can cleanup?
-              this.pigpio._i2cs = this.pigpio._i2cs || {};
-              this.pigpio._i2cs[this.i2c] = true;
-              return this;
-            },
-            close: async function(){
-              await this.pigpio.i2cClose(this.i2c);
-              delete this.pigpio._i2cs[this.i2c]; // forget this handle.
-              this.i2c = undefined;
-            }
-        };
+      let i2cinstance = {
+          bus:1,
+          i2c_address:0,        
+          pigpio: pigpio_instance,
+          flags: flags,
+          init: async function(bus, addr){
+            this.bus = bus;
+            this.i2c_address = addr;
+            this.i2c = await this.pigpio.i2cOpen(this.bus, this.i2c_address, this.flags);
+            addfns(this);
+            // keep open handles, maybe in the future we can cleanup?
+            this.pigpio._i2cs = this.pigpio._i2cs || {};
+            this.pigpio._i2cs[this.i2c] = true;
+            return this;
+          },
+          close: async function(){
+            await this.pigpio.i2cClose(this.i2c);
+            delete this.pigpio._i2cs[this.i2c]; // forget this handle.
+            this.i2c = undefined;
+          }
+      };
 
-
-
-        let promise;
-        if (!callback){        
-            promise = new Promise((resolve, reject) => {
-                callback = (error, instance) => {
-                    if (error) reject(error)
-                    else resolve(instance);
-                }
-            });
-        }
-        i2cinstance.init(bus, addr).then((instance)=>{
-            callback(null, instance);
-        }).catch((e)=>{
-            callback(e, null);
-        });
-        return promise;
+      let promise;
+      if (!callback){        
+          promise = new Promise((resolve, reject) => {
+              callback = (error, instance) => {
+                  if (error) reject(error)
+                  else resolve(instance);
+              }
+          });
+      }
+      i2cinstance.init(bus, addr).then((instance)=>{
+          callback(null, instance);
+      }).catch((e)=>{
+          callback(e, null);
+      });
+      return promise;
     };
-
     pigpio_instance.i2c = i2c;
   }
   addI2cHelper(that);
