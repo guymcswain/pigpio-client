@@ -377,8 +377,9 @@ exports.pigpio = function (pi) {
     resBuf = resBuf.slice(extLen + 16) // leave remainder for later processing
     // process the response callback
     var callback = callbackQueue.shift() // FIXME: test for queue underflow
-    if (typeof callback === 'function') callback(error, p3[0], ...res)
-    else {
+    if (typeof callback === 'function') {
+      try { callback(error, p3[0], ...res); } catch(e) { console.error(e); }
+    } else {
       if (error) {
         that.emit('error', error)
       }
@@ -519,6 +520,10 @@ exports.pigpio = function (pi) {
 
         // listener that monitors all gpio bits
         notificationSocket.on('data', notificationSocketDataHandler)
+
+        // re-start notifications on re-connect
+        that.startNotifications(0);
+
         done() // connect handler completed callback
       })
     })
@@ -537,9 +542,9 @@ exports.pigpio = function (pi) {
       // process notifications, issue callbacks to registerd notifier if bits have changed
       for (let i = 0; i < buf.length - remainder; i += 12) {
         let seqno = buf.readUInt16LE(i + 0),
-          flags = buf.readUInt16LE(i + 2),
-          tick = buf.readUInt32LE(i + 4),
-          levels = buf.readUInt32LE(i + 8)
+        flags = buf.readUInt16LE(i + 2),
+        tick = buf.readUInt32LE(i + 4),
+        levels = buf.readUInt32LE(i + 8)
 
         if (flags & 0x80 && (flags & 0x1F) === 31) {
           that.emit('EVENT_BSC')
@@ -549,7 +554,7 @@ exports.pigpio = function (pi) {
         oldLevels = levels
         for (let nob of notifiers.keys()) {
           if (nob.bits & changes) {
-            nob.func(levels, tick)
+            try{ nob.func( levels & nob.bits, tick ); } catch(e){ console.error(e); };
           }
         }
       }
@@ -600,17 +605,21 @@ exports.pigpio = function (pi) {
       return null
     }
 
-    // Registers callbacks for this gpio
-    var nob = {
-      id: nID++,
-      func: cb,
-      bits: +bits
+    // only add one if there is one to add.
+    // this allows us to call the function to restart notifications on socekt reconnect
+    var nob;
+    if (cb){
+      // Registers callbacks for this gpio
+      nob = {
+        id: nID++,
+        func: cb,
+        bits: +bits
+      }
+      notifiers.add(nob)
     }
-    notifiers.add(nob)
-
 
     // If not currently monitoring, update the current levels (oldLevels)
-    if (monitorBits === 0) {
+    //if (monitorBits === 0) {
       request(BR1, 0, 0, 0, (err, levels) => {
         if (err) {
           //that.emit('error', new Error('pigpio: ', ERR[err].message))
@@ -619,18 +628,27 @@ exports.pigpio = function (pi) {
           that.emit('error', error)
         }
         oldLevels = levels
+
+        // get current tick, and spoof a notification to the new receiver
+        request(TICK, 0, 0, 0, (err, tick)=>{
+          if (nob){ // if adding one, then notify them only of initial level and time.
+            try{ nob.func( levels & nob.bits, tick ); } catch(e){ console.error(e); };
+          } else { // if re-connected, then notify all of current level and time.
+            for (let nob of notifiers.keys()) {
+              try{ nob.func( levels & nob.bits, tick ); } catch(e){ console.error(e); };
+            }
+          }
+        });
       })
-    }
+    //}
     // Update monitor with the new bits to monitor
     monitorBits |= bits
 
     // start monitoring new bits
     request(NB, handle, monitorBits, 0)
 
-
-
-    // return the callback 'id'
-    return nob.id
+    // return the callback 'id', if we made one
+    return nob? nob.id: 0;
   }
   that.pauseNotifications = function (cb) {
   // Caution:  This will pause **all** notifications!
@@ -639,18 +657,23 @@ exports.pigpio = function (pi) {
   that.stopNotifications = function (id, cb) {
     // Clear monitored bits and unregister callback
     var result
+    var monitorBits = 0;
     for (let nob of notifiers.keys()) {
-      if (nob.id === id) {
-        monitorBits &= ~nob.bits // clear gpio bit in monitorBits
-        // Stop the notifications on pigpio hardware
-        result = request(NB, handle, monitorBits, 0, (err, res) => {
-          // last callback with null arguments
-          nob.func(null, null)
-          notifiers.delete(nob)
-          cb(err, res)
-        })
+      if (nob.id !== id) {
+        // rebuild monitorbits out of the remaining notifications
+        monitorBits |= nob.bits
       }
     }
+    // Stop the notifications on pigpio hardware
+    result = request(NB, handle, monitorBits, 0, (err, res) => {
+      for (let nob of notifiers.keys()) {
+        if (nob.id === id) {
+          notifiers.delete(nob)
+          try{ nob.func( null, null ); } catch(e){ console.error(e); };
+        }
+      }
+      cb(err, res)
+    })
     return result
   }
   that.closeNotifications = function (cb) {
@@ -749,6 +772,14 @@ exports.pigpio = function (pi) {
   }
 
 /* ___________________________________________________________________________ */
+
+  that.glitchSet = function (gpio, steady, callback) {
+    assert(typeof steady === 'number' && steady >= 0 && steady <= 300000,
+      "Argument 'steady' must be a numeric bewtween 0 or 300000")
+    return request(FG, gpio, steady, 0, callback)
+  }
+
+
 
   that.gpio = function (gpio) {
     
