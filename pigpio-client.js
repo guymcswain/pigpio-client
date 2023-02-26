@@ -82,19 +82,25 @@ exports.pigpio = function (pi) {
 
   function startRetryTimer(sock) {
     if (info.timeout) {
+      let timeout = info.timeout;
+      if (info.timeout < 0) timeout = 30000;
       sock.retryTimer = setTimeout( () => {
-        if (sock.reconnectTimer) {
-          clearTimeout(sock.reconnectTimer)
-          sock.reconnectTimer = null
-        }
+        if (info.timeout < 0){ // if timeout negative, go on forever.
+          startRetryTimer(sock);
+        } else { // else drop out here....
+          if (sock.reconnectTimer) {
+            clearTimeout(sock.reconnectTimer)
+            sock.reconnectTimer = null
+          }
 
-        log(`${sock.name} retry timeout`)
-        // hack: we don't want two error events
-        if (sock.name === 'commandSocket')
-          that.emit('error', new MyError({
-            api: 'connect',
-            message: 'Could not connect, retry timeout expired.'
-          }))
+          log(`${sock.name} retry timeout`)
+          // hack: we don't want two error events
+          if (sock.name === 'commandSocket')
+            that.emit('error', new MyError({
+              api: 'connect',
+              message: 'Could not connect, retry timeout expired.'
+            }));
+        }
       }, info.timeout * 60 * 1000)
       if (!info.keepNodeAlive){
         sock.retryTimer.unref();
@@ -111,6 +117,10 @@ exports.pigpio = function (pi) {
     if (sock.retryTimer) {
       clearTimeout(sock.retryTimer)
       sock.retryTimer = null
+    }
+    if (sock.reconnectTimer) {
+      clearTimeout(sock.reconnectTimer)
+      sock.reconnectTimer = null
     }
   }
 
@@ -147,8 +157,26 @@ exports.pigpio = function (pi) {
 
   function commandSocketConnectHandler(done) {
         // (re)initialize stuff
-        requestQueue = []   // flush
-        callbackQueue = []  // flush
+        // give errors to any requests which have been sent.
+        // give errors to any requests which have not yet been sent, but are queued.
+        flushQueues('connect'); 
+
+
+        if (notificationSocket && notificationSocket.destroy) {
+          log('Remove all listeners and destroy notification socket.')
+          notificationSocket.removeAllListeners()
+          notificationSocket.destroy()
+        }
+    
+        notificationSocket = initSocket('notificationSocket')
+        notificationSocket.on('end', function () {
+          log('pigpio notification socket end received')
+        });
+        // connect the notification socket
+        connect(notificationSocket);
+
+        //requestQueue = []   // flush
+        //callbackQueue = []  // flush
         // get pigpio version info then signal 'connected'
         request(PIGPV, 0, 0, 0, (err, res) => {
           info.pigpioVersion = res
@@ -175,42 +203,52 @@ exports.pigpio = function (pi) {
 
   function disconnector(sock) {
     var handler = function(reason) {
-      sock.destroy()
-      if (sock.reconnectTimer) {
-        clearTimeout(sock.reconnectTimer)
-        sock.reconnectTimer = null
-      }
-      if (sock.retryTimer) {
-        clearTimeout(sock.retryTimer)
-        sock.retryTimer = null
-      }
-      if (sock.name === 'notificationSocket') {
-        sock.setTimeout(0)
+      if (info.timeout && !sock.pigpio_ending){
 
-      }
-      log(`${sock.name} destroyed due to ${reason}`)
-      info[sock.name] = false // mark socket disconnected
-      // after all sockets are destroyed, alert application
-      if ( (!info.commandSocket && !info.notificationSocket) ) {
-        that.emit('disconnected', reason)
-        log('sent disconnect event to application')
+      } else {
+        sock.destroy()
+        if (sock.reconnectTimer) {
+          clearTimeout(sock.reconnectTimer)
+          sock.reconnectTimer = null
+        }
+        if (sock.retryTimer) {
+          clearTimeout(sock.retryTimer)
+          sock.retryTimer = null
+        }
+        if (sock.name === 'notificationSocket') {
+          sock.setTimeout(0)
+        }
+        log(`${sock.name} destroyed due to ${reason}`)
+        info[sock.name] = false // mark socket disconnected
+        // after all sockets are destroyed, alert application
+        if ( (!info.commandSocket && !info.notificationSocket) ) {
+          that.emit('disconnected', reason)
+          log('sent disconnect event to application')
+        }
       }
     }
     return handler
   }
 
   commandSocket.on('end', function () {
-      log('pigpio command socket end received')
-  })
+    if (commandSocket.pigpio_ending){ // if WE asked it to end
+      log('pigpio command socket end received');
+    } else {
+      // try to reconnect - e.g. if pigpiod restarted
+      commandSocket.reconnectHandler('ECONNRESET');
+    }
+  });
 
   function returnErrorHandler(sock) {
     var handler = function (e) {
       log(`${sock.name} error code: ${e.code}, message: ${e.message}`)
 
-      if (sock.pending /*&& sock.connecting)*/)
+      if (sock.pending /*&& sock.connecting)*/ || e === 'ECONNRESET')
       {
-        if (sock.retryTimer) {
+        if (info.timeout) {
+          stopRetryTimer(sock);
           sock.reconnectTimer = setTimeout( () => {
+            startRetryTimer(sock)
             sock.connect(info.port, info.host)
           }, 5000)
           if (!info.keepNodeAlive){
@@ -364,6 +402,20 @@ exports.pigpio = function (pi) {
   } // responseHandler
 
 
+  // empty request data, giving an error to each callback - else they never return on re-connect
+  var flushQueues = (reason)=>{
+    while (callbackQueue.length){
+      var callback = callbackQueue.shift() // FIXME: test for queue underflow
+      if (typeof callback === 'function') { try {callback(reason);} catch(e){console.error(e);} }
+    }
+
+    while (requestQueue.length){
+      var req = requestQueue.shift()
+      if (typeof req.callback === 'function') { try {req.callback(reason);} catch(e){console.error(e);} }
+    }
+  }
+
+
   // helper functions
   var request = (cmd, p1, p2, p3, cb, extArrBuf) => {
     var bufSize = 16
@@ -414,8 +466,8 @@ exports.pigpio = function (pi) {
   var chunklet = Buffer.allocUnsafe(0) // notify chunk fragments
   var oldLevels
 
-  var notificationSocket = initSocket('notificationSocket')
-  connect(notificationSocket)
+  var notificationSocket; // = initSocket('notificationSocket')
+  //connect(notificationSocket) - only connect if we get the command socket
 
   function notificationSocketConnectHandler(done) {
     // connect handler here
@@ -504,9 +556,9 @@ exports.pigpio = function (pi) {
     }
   }
 
-  notificationSocket.on('end', function () {
-      log('pigpio notification socket end received')
-  })
+  //notificationSocket.on('end', function () {
+  //    log('pigpio notification socket end received')
+  //})
 
   /** * Public Methods ***/
 
@@ -630,11 +682,31 @@ exports.pigpio = function (pi) {
     notificationSocket.destroy()
   }
   that.end = function (cb) {
+    // stop timers, if any
+    stopRetryTimer(commandSocket);
+    commandSocket.pigpio_ending = true;
     commandSocket.end()       // calls disconnectHandler, destroys connection.
-    notificationSocket.end()  // calls disconnectHandler, destroys connection.
+    if (notificationSocket){
+      stopRetryTimer(notificationSocket);
+      notificationSocket.pigpio_ending = true;
+      notificationSocket.end()  // calls disconnectHandler, destroys connection.
+    }
+    let promise;
+    if (!cb){
+      promise = new Promise((resolve, reject) => {
+        cb = (error, ...args) => {
+            if (error) {
+                reject(error)
+            } else {
+                resolve(args);
+            }
+        }
+      });
+    }
     that.once('disconnected', () => {
       if (typeof cb === 'function') cb()
     })
+    return promise;
   }
   
   that.i2cOpen = function (bus, device, callback) {
