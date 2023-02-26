@@ -42,6 +42,7 @@ var info = {
   userGpioMask: 0xfbc6cf9c,
   timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
   version: '1.5.1',
+  keepNodeAlive: false, // set to true in combination with timeout to allow pigpio to hold node open.
 }
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
@@ -59,6 +60,7 @@ exports.pigpio = function (pi) {
   info.port = pi.port || info.port
   info.pipelining = pi.pipelining || info.pipelining
   info.timeout = (pi.hasOwnProperty('timeout'))? pi.timeout : info.timeout
+  info.keepNodeAlive = (pi.hasOwnProperty('keepNodeAlive'))? pi.keepNodeAlive : info.keepNodeAlive
   // constructor object inherits from EventEmitter
   var that = new MyEmitter() // can't use prototypal inheritance
 
@@ -94,7 +96,9 @@ exports.pigpio = function (pi) {
             message: 'Could not connect, retry timeout expired.'
           }))
       }, info.timeout * 60 * 1000)
-      sock.retryTimer.unref()
+      if (!info.keepNodeAlive){
+        sock.retryTimer.unref();
+      }
     }
   }
 
@@ -209,7 +213,9 @@ exports.pigpio = function (pi) {
           sock.reconnectTimer = setTimeout( () => {
             sock.connect(info.port, info.host)
           }, 5000)
-          sock.reconnectTimer.unref()
+          if (!info.keepNodeAlive){
+            sock.reconnectTimer.unref();
+          }
           log(`retry connection on ${sock.name} in 5 sec ...`)
 
           // For each error code, inform user of retry timeout activity.
