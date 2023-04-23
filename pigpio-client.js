@@ -14,17 +14,17 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, SPIO, SPIC, SPIW, FO, FC, FR,
-FS, I2CO, I2CC, I2CRD, I2CWD, EVM } = SIF.Commands
+FS, I2CO, I2CC, I2CRD, I2CWD, I2CRB, I2CRI, EVM } = SIF.Commands
 
 // These command types can not fail, ie, return p3 as positive integer
 const canNeverFailCmdSet = new Set([HWVER, PIGPV, BR1, BR2, TICK])
 
 // These command types have extended command data lengths
 const extReqCmdSet = new Set([WVCHA, WVAG, SLRO, WVAS, HP, SPIO, SPIW, FO, FS, I2CO,
-I2CWD])
+I2CWD, I2CRI])
 
 // These command types have extended response data lengths
-const extResCmdSet = new Set([SLR, FR, I2CRD])
+const extResCmdSet = new Set([SLR, FR, I2CRD, I2CRI])
 
 /* pigpio constants */
 const {PUD_OFF, PUD_DOWN, PUD_UP, PI_WAVE_MODE_ONE_SHOT, PI_WAVE_MODE_REPEAT,
@@ -1261,6 +1261,28 @@ exports.pigpio = function (pi) {
       this.write = function (data, callback) {
         return request(I2CWD, handle, 0, data.byteLength, callback, data);
       };
+      this.readByte = function (register, callback) {
+        return request(I2CRB, handle, register, 0, callback);
+      }
+      this.readBlock = function (register, count) {
+        let arrBuf = new ArrayBuffer(4);
+        let flagsBuf = new Uint32Array(arrBuf, 0, 1);
+        flagsBuf[0] = count;
+        let callback;
+        let promise = new Promise((resolve, reject) => {
+          callback = (error, len, ...bytes) => {
+            if (error) {
+              reject(error);
+            } else if (len === 0) {
+              resolve();
+            } else {
+              resolve(bytes);
+            }
+          }
+        });
+        request(I2CRI, handle, register, 4, callback, arrBuf);
+        return promise;
+      }
     }
     _i2c.prototype = that;
     return new _i2c(bus, address);

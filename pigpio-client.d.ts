@@ -134,5 +134,7 @@ declare module 'pigpio-client' {
         close(callback?: (err, ...args) => void): Promise | undefined;
         read(count: number): Promise;
         write(data: Uint8Array, callback?: (err, ...args) => void): Promise | undefined;
+        readByte(register: number, callback?: (err, ...args) => void): Promise | undefined;
+        readBlock(register: number, count: number): Promise;
     }
 }

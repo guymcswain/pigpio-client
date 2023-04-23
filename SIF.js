@@ -30,6 +30,8 @@ const CMDS = {
   I2CC:   55, // i2cClose
   I2CRD:  56, // i2cReadDevice
   I2CWD:  57, // i2cWriteDevice
+  I2CRB:  61, // i2cReadByteData
+  I2CRI:  67, // i2cReadI2cBlockData
   SPIO:   71, // spiOpen
   SPIC:   72, // spiClose
   SPIW:   74, // spiWrite
