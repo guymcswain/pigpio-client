@@ -30,19 +30,6 @@ const extResCmdSet = SIF.extResCmdSet
 const {PUD_OFF, PUD_DOWN, PUD_UP, PI_WAVE_MODE_ONE_SHOT, PI_WAVE_MODE_REPEAT,
 PI_WAVE_MODE_ONE_SHOT_SYNC, PI_WAVE_MODE_REPEAT_SYNC} = SIF.Constants
 
-var info = {
-  host: 'localhost',
-  port: 8888,
-  pipelining: false,
-  commandSocket: undefined,       // connection status undefined until 1st connect
-  notificationSocket: undefined,  // connection status undefined until 1st connect
-  pigpioVersion: '',
-  hwVersion: '',
-  hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
-  userGpioMask: 0xfbc6cf9c,
-  timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-  version: '1.5.1',
-}
 var log = function(...args) {
   if (/pigpio/i.test(process.env.DEBUG) || process.env.DEBUG === '*') {
     console.log('pigpio-client ', ...args)
@@ -50,7 +37,20 @@ var log = function(...args) {
 }
 /*****************************************************************************/
 exports.pigpio = function (pi) {
-  var requestQueue = []
+  var info = {
+    host: 'localhost',
+    port: 8888,
+    pipelining: false,
+    commandSocket: undefined,       // connection status undefined until 1st connect
+    notificationSocket: undefined,  // connection status undefined until 1st connect
+    pigpioVersion: '',
+    hwVersion: '',
+    hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
+    userGpioMask: 0xfbc6cf9c,
+    timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
+    version: '1.5.1',
+  }
+    var requestQueue = []
   var callbackQueue = []
   const net = require('net')
   // update info
