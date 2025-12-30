@@ -48,9 +48,9 @@ exports.pigpio = function (pi) {
     hardware_type: 2,  // 26 pin plus 8 pin connectors (ie rpi model B)
     userGpioMask: 0xfbc6cf9c,
     timeout: 0,  // Default is back compatible with v1.0.3. Change to 5 in next ver.
-    version: '1.5.1',
+    version: '1.5.2',
   }
-    var requestQueue = []
+  var requestQueue = []
   var callbackQueue = []
   const net = require('net')
   // update info
@@ -507,7 +507,7 @@ exports.pigpio = function (pi) {
   that.request = request
 
   that.connect = function() {
-    if (commandSocket.destroy) {
+    if (commandSocket && !commandSocket.destroyed) {
       log('Remove all listeners and destroy command socket.')
       commandSocket.removeAllListeners()
       commandSocket.destroy()
@@ -516,7 +516,7 @@ exports.pigpio = function (pi) {
     commandSocket.addListener('data', commandSocketDataHandler)
     connect(commandSocket)
 
-    if (notificationSocket.destroy) {
+    if (notificationSocket && !notificationSocket.destroyed) {
       log('Remove all listeners and destroy notification socket.')
       notificationSocket.removeAllListeners()
       notificationSocket.destroy()
