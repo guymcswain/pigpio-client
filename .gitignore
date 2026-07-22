@@ -14,4 +14,4 @@ readme.pdf
 *.txt
 
 # ignore other
-package-lock.json
+## package-lock.json
