@@ -14,7 +14,8 @@ const ERR = SIF.PigpioErrors
 const { BR1, BR2, TICK, HWVER, PIGPV, PUD, MODES, MODEG, READ, WRITE, PWM, WVCLR,
 WVCRE, WVBSY, WVAG, WVCHA, NOIB, NB, NP, NC, SLRO, SLR, SLRC, SLRI, WVTXM, WVTAT,
 WVHLT, WVDEL, WVAS, HP, HC, GDC, PFS, FG, SERVO, GPW, TRIG,
-I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM
+I2CO, I2CC, I2CRD, I2CWD, BSCX, EVM, 
+PROC, PROCD, PROCR, PROCS, PROCP, PROCU
 } = SIF.Commands
 
 // These command types can not fail, ie, always return p3/res as positive integer
@@ -671,6 +672,48 @@ exports.pigpio = function (pi) {
   }
 
 /* ___________________________________________________________________________ */
+
+  // scripts
+  //PROC, PROCD, PROCR, PROCS, PROCP, PROCU
+  // store a text script to pigpiod, returns a scriptID
+  that.storeScript = function(text, cb) {
+    let chars = text.split('');
+    var arrBuf = new ArrayBuffer(chars.length);
+    var buffer = new Uint8Array(arrBuf);
+    for (let i = 0; i < chars.length; i++) {
+      buffer[i] = chars[i].charCodeAt(0) & 0xff;
+    }
+    return request(PROC, 0, 0, arrBuf.byteLength, cb, arrBuf)
+  }
+  that.deleteScript = function (sid, cb) {
+    return request(PROCD, sid, 0, 0, cb)
+  }
+  that.statusScript = function (sid, cb) {
+    return request(PROCP, sid, 0, 0, cb)
+  }
+  that.runScript = function (sid, params, cb) {
+    params = params || [];
+    var arrBuf = new ArrayBuffer(params.length*4);
+    var buffer = new Uint32Array(arrBuf);
+    for (let i = 0; i < params.length; i++) {
+      buffer[i] = params[i]>>0;
+    }
+    return request(PROCR, sid, 0, arrBuf.byteLength, cb, arrBuf)
+  }
+  that.stopScript = function (sid, cb) {
+    return request(PROCS, sid, 0, 0, cb)
+  }
+  // update script params - probably for a running script?
+  that.updateScript = function (sid, params, cb) {
+    params = params || [];
+    var arrBuf = new ArrayBuffer(params.length*4);
+    var buffer = new Uint32Array(arrBuf);
+    for (let i = 0; i < params.length; i++) {
+      buffer[i] = params[i]>>0;
+    }
+    return request(PROCU, sid, 0, arrBuf.byteLength, cb, arrBuf)
+  }
+
 
   that.gpio = function (gpio) {
     
